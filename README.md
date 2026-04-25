@@ -1,8 +1,7 @@
 <div align="center">
-  <img src="https://capsule-render.vercel.app/render?type=wave&color=00ADD8&height=200&section=header&text=🌊%20Whitelist%20Download&fontSize=70&animation=fadeIn" />
+  <img src="https://capsule-render.vercel.app/api?type=wave&color=00ADD8&height=200&section=header&text=🌊 whitelist-download&fontSize=70&animation=fadeIn" />
 
   <p align="center">
-    <img src="https://img.shields.io/github/languages/top/rom5n/whitelist-download?style=for-the-badge&color=00ADD8&logo=go&logoColor=white" />
     <img src="https://img.shields.io/github/stars/rom5n/whitelist-download?style=for-the-badge&color=gold&logo=github" />
     <img src="https://img.shields.io/github/last-commit/rom5n/whitelist-download?style=for-the-badge&color=green" />
     <img src="https://img.shields.io/badge/Configs-3800+-orange?style=for-the-badge&logo=serverless" />
@@ -10,7 +9,7 @@
 
 **Автоматический агрегатор VLESS-конфигов и локальный сервер подписок.**
 
-*Простой способ держать ваш VPN-клиент всегда обновленным без лишних хлопот.*
+*Ваш локальный сервер конфигов*
 </div>
 
 ---
@@ -57,11 +56,11 @@
 3. Вставьте её в ваш клиент (**v2rayN**, **Nekobox**, **Hiddify**, **v2rayNG**).
 
 > [!TIP]
-> Если ссылка не работает, проверьте ваш IPv4-адрес в настройках сети Windows и убедитесь, что телефон и ПК находятся в одной Wi-Fi сети.
+> Если ссылка не работает, проверьте ваш IPv4-адрес в настройках сети Windows и убедитесь, что телефон и ПК находятся в одной Wi-Fi сети, а так же на телефоне выключены все VPN/VLESS (после импорта подписки их можно снова включить).
 
 ---
 
-### ⚙️ Тонкая настройка (Параметры ссылки)
+### ⚙️ Параметры ссылки
 
 Вы можете гибко управлять списком серверов через URL:
 
@@ -69,15 +68,15 @@
 | :--- | :--- |
 | `/sub` | Импорт **всех** доступных конфигов |
 | `/sub/50` | Только первые **50** штук |
-| `/sub/10-30` | Пропустить первые 9 и взять следующие **30** |
+| `/sub/10-30` | Начиная с 10 (включительно) взять следующие **30** |
 
 ---
 
-### 📂 Структура файлов
+### 📂 Файлы
 
 - 📄 `configs.txt` — Ваша локальная база конфигов. Перезаписывается каждый час.
 - 📝 `log.txt` — История работы, ошибки и ваш персональный адрес подписки.
-- ⚙️ `wl-download.exe` — Основной бинарный файл. **Не перемещайте его после запуска!**
+- ⚙️ `wl-download.exe` — Основной бинарный файл. **Не перемещайте его после запуска!**. Если все же нужно переместить, то найдите в диспетчере задач процесс 'wl-download.exe' и завершите его, после переместите файл в новое место и запустите его.
 
 ---
 

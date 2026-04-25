@@ -83,7 +83,6 @@
 <div align="center">
 
 ![Visitors](https://api.visitorbadge.io/api/visitors?path=rom5n.whitelist-download&label=Visitors&labelColor=%23555555&countColor=%23007ec6)
-![Cyber Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2From5n%2Fwhitelist-download&count_bg=%238cc600&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=Cyber+Hits&edge_flat=false)
 
 <br />
 

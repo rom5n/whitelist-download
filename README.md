@@ -1,6 +1,5 @@
+# 🌊 whitelist-download
 <div align="center">
-  <img src="https://capsule-render.vercel.app/api?type=wave&color=00ADD8&height=200&section=header&text=🌊 whitelist-download&fontSize=70&animation=fadeIn" />
-
   <p align="center">
     <img src="https://img.shields.io/github/stars/rom5n/whitelist-download?style=for-the-badge&color=gold&logo=github" />
     <img src="https://img.shields.io/github/last-commit/rom5n/whitelist-download?style=for-the-badge&color=green" />

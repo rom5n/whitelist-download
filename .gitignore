@@ -22,7 +22,6 @@ cover.out
 coverage.txt
 
 .env
-.env.*
 *.local
 
 .vscode/

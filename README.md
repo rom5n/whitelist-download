@@ -3,7 +3,7 @@
   <p align="center">
     <img src="https://img.shields.io/github/stars/rom5n/whitelist-download?style=for-the-badge&color=gold&logo=github" />
     <img src="https://img.shields.io/github/last-commit/rom5n/whitelist-download?style=for-the-badge&color=green" />
-    <img src="https://img.shields.io/badge/Configs-3800+-orange?style=for-the-badge&logo=serverless" />
+    <img src="https://img.shields.io/badge/Configs-3000+-orange?style=for-the-badge&logo=serverless" />
   </p>
 
 **Автоматический агрегатор VLESS-конфигов и локальный сервер подписок.**

@@ -14,7 +14,7 @@ import (
 	"github.com/rom5n/whitelist-download/domain"
 )
 
-func setHeaders(w http.ResponseWriter, title, description string) http.ResponseWriter {
+func setHeaders(w http.ResponseWriter, title, description string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("profile-update-interval", "1")
 	w.Header().Set("subscription-userinfo", "upload=0; download=0; total=0; expire=0")
@@ -22,46 +22,49 @@ func setHeaders(w http.ResponseWriter, title, description string) http.ResponseW
 	w.Header().Set("announce", fmt.Sprintf("base64:%v", description))
 	w.Header().Set("date", time.Now().UTC().Format(http.TimeFormat))
 	w.Header().Set("routing-enable", "true")
-
-	return w
 }
 
-func subscriptionHandler(configsFile *domain.SafeFile, configsCache *domain.SafeConfigsCache, subscriptionTitle, descriptionText string) func(w http.ResponseWriter, r *http.Request) {
+func subscriptionHandler(configsPath string, configsCache *domain.SafeConfigsCache, subscriptionTitle, descriptionText string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		offset, limit := getLimitForConfigs(r)
+		offset, limit, err := getLimitForConfigs(r)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
 
 		title := base64.StdEncoding.EncodeToString([]byte(subscriptionTitle))
 		description := base64.StdEncoding.EncodeToString([]byte(descriptionText))
 
-		w = setHeaders(w, title, description)
+		setHeaders(w, title, description)
 
-		data, addedConfigs := getConfigsFromCache(configsCache, offset, limit)
+		encoder := base64.NewEncoder(base64.StdEncoding, w)
+		defer encoder.Close()
 
-		if data == "" {
-			log.Printf("cache missed. Loading configs from file: %v\n", configsFile.Name)
-			data, addedConfigs = getConfigsFromFile(configsFile, offset, limit)
+		addedConfigs := getConfigsFromCache(configsCache, encoder, offset, limit)
+
+		if addedConfigs == 0 {
+			log.Printf("cache missed. Loading configs from file: %v\n", configsPath)
+			configsFile := domain.GetFile(configsPath)
+			defer configsFile.Close()
+			addedConfigs = getConfigsFromFile(configsFile, encoder, offset, limit)
 		}
-
-		data = strings.TrimSpace(data)
-		encoded := base64.StdEncoding.EncodeToString([]byte(data))
-
-		w.Write([]byte(encoded))
 
 		log.Printf("configs sent. Amount: %v. Offset: %v. limit: %v.\n", addedConfigs, offset, limit)
 	}
 }
 
-func getConfigsFromCache(configsCache *domain.SafeConfigsCache, offset int, limit int) (string, int) {
-	var data string
+func getConfigsFromCache(configsCache *domain.SafeConfigsCache, encoder io.WriteCloser, offset int, limit int) int {
 	addedConfigs := 0
 
 	for i, text := range configsCache.Get() {
-		if i < offset {
+		if i < offset-1 {
 			continue
 		}
 
-		data += text
-		data += "\n"
+		encoder.Write([]byte(text))
+		encoder.Write([]byte("\n"))
+
 		addedConfigs++
 
 		if limit > 0 && addedConfigs >= limit {
@@ -69,15 +72,11 @@ func getConfigsFromCache(configsCache *domain.SafeConfigsCache, offset int, limi
 		}
 	}
 
-	return data, addedConfigs
+	return addedConfigs
 }
 
-func getConfigsFromFile(configsFile *domain.SafeFile, offset, limit int) (string, int) {
-	var data string
+func getConfigsFromFile(configsFile *domain.SafeFile, encoder io.WriteCloser, offset, limit int) int {
 	addedConfigs := 0
-
-	configsFile.Seek(0, io.SeekStart)
-	defer configsFile.Seek(0, io.SeekStart)
 
 	scan := bufio.NewScanner(configsFile)
 
@@ -88,8 +87,8 @@ func getConfigsFromFile(configsFile *domain.SafeFile, offset, limit int) (string
 			continue
 		}
 
-		data += scan.Text()
-		data += "\n"
+		encoder.Write(scan.Bytes())
+		encoder.Write([]byte("\n"))
 		addedConfigs++
 
 		if limit > 0 && addedConfigs >= limit {
@@ -103,10 +102,10 @@ func getConfigsFromFile(configsFile *domain.SafeFile, offset, limit int) (string
 		log.Println("failed to read config file", err)
 	}
 
-	return data, addedConfigs
+	return addedConfigs
 }
 
-func getLimitForConfigs(r *http.Request) (int, int) {
+func getLimitForConfigs(r *http.Request) (int, int, error) {
 	path := strings.TrimPrefix(r.URL.Path, "/sub")
 	path = strings.TrimPrefix(path, "/")
 
@@ -120,14 +119,20 @@ func getLimitForConfigs(r *http.Request) (int, int) {
 		limit, err = strconv.Atoi(data[0])
 		if err != nil {
 			log.Println("invalid limit for requested configs")
+			return 0, 0, fmt.Errorf("invalid limit")
 		}
 
 		if len(data) == 2 {
 			offset, err = strconv.Atoi(data[0])
-			limit, err = strconv.Atoi(data[1])
-
 			if err != nil {
-				log.Println("invalid offset or limit for requested configs")
+				log.Println("invalid offset foe requested configs")
+				return 0, 0, fmt.Errorf("invalid offset for requested configs")
+			}
+
+			limit, err = strconv.Atoi(data[1])
+			if err != nil {
+				log.Println("invalid limit for requested configs")
+				return 0, 0, fmt.Errorf("invalid limit for requested configs")
 			}
 		}
 	}
@@ -136,5 +141,5 @@ func getLimitForConfigs(r *http.Request) (int, int) {
 		offset = 1
 	}
 
-	return offset, limit
+	return offset, limit, nil
 }

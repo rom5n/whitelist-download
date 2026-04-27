@@ -12,6 +12,13 @@ type SafeFile struct {
 	Name string
 }
 
+func (f *SafeFile) Close() error {
+	f.RWMutex.Lock()
+	defer f.RWMutex.Unlock()
+
+	return f.file.Close()
+}
+
 func (f *SafeFile) Write(data []byte) (int, error) {
 	f.RWMutex.Lock()
 	defer f.RWMutex.Unlock()
@@ -48,7 +55,7 @@ func (f *SafeFile) WriteString(s string) (int, error) {
 }
 
 func GetFile(filename string) *SafeFile {
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_RDWR|os.O_TRUNC, 0666)
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		log.Fatalf("error opening %v file: %v\n", filename, err)
 	}

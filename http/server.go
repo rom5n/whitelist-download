@@ -9,9 +9,9 @@ import (
 	"github.com/rom5n/whitelist-download/domain"
 )
 
-func StartHttpSubscriptionServer(configsFile *domain.SafeFile, configsCache *domain.SafeConfigsCache, subPath, port, subscriptionTitle, descriptionText string) {
-	http.HandleFunc(subPath, subscriptionHandler(configsFile, configsCache, subscriptionTitle, descriptionText))
-	http.HandleFunc(subPath+"/", subscriptionHandler(configsFile, configsCache, subscriptionTitle, descriptionText))
+func StartHttpSubscriptionServer(configsPath string, configsCache *domain.SafeConfigsCache, subPath, port, subscriptionTitle, descriptionText string) {
+	http.HandleFunc(subPath, subscriptionHandler(configsPath, configsCache, subscriptionTitle, descriptionText))
+	http.HandleFunc(subPath+"/", subscriptionHandler(configsPath, configsCache, subscriptionTitle, descriptionText))
 
 	log.Printf("⚡ Subscription server started on port: %v\n", port)
 	log.Printf("✨✨ Check it: %v\n", "http://"+getIP()+":"+port+subPath+"/15")

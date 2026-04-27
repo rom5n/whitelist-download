@@ -2,6 +2,8 @@ configs.txt
 log.txt
 *.log
 
+whitelist-download-*
+
 *.zip
 wl-download.exe
 *.exe

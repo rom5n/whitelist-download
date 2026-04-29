@@ -3,7 +3,7 @@ package logging
 import (
 	"log"
 
-	"github.com/rom5n/whitelist-download/domain"
+	"github.com/rom5n/whitelist-download/backend/domain"
 )
 
 func ConfigureLogging(filepath string) {

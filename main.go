@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/rom5n/whitelist-download/config"
-	"github.com/rom5n/whitelist-download/configs_logic"
-	"github.com/rom5n/whitelist-download/domain"
-	"github.com/rom5n/whitelist-download/geo_ip"
-	"github.com/rom5n/whitelist-download/http"
-	"github.com/rom5n/whitelist-download/logging"
-	"github.com/rom5n/whitelist-download/startup"
+	"github.com/rom5n/whitelist-download/backend/config"
+	"github.com/rom5n/whitelist-download/backend/configs_logic"
+	"github.com/rom5n/whitelist-download/backend/domain"
+	"github.com/rom5n/whitelist-download/backend/geo_ip"
+	"github.com/rom5n/whitelist-download/backend/http"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"github.com/rom5n/whitelist-download/backend/startup"
 )
 
 func GetSources(filepath string) []string {

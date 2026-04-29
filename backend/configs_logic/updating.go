@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rom5n/whitelist-download/domain"
-	"github.com/rom5n/whitelist-download/geo_ip"
+	"github.com/rom5n/whitelist-download/backend/domain"
+	"github.com/rom5n/whitelist-download/backend/geo_ip"
 )
 
 const (
@@ -75,11 +75,11 @@ func getConfigs(sources []string) ([]string, int) {
 			scan := bufio.NewScanner(resp.Body)
 			for scan.Scan() {
 				config := strings.TrimSpace(scan.Text())
-				is, err := isCopy(config, unique)
+				is, err := isUnique(config, unique)
 				if err != nil {
 					return
 				}
-				if is {
+				if !is {
 					copies++
 				}
 
@@ -135,8 +135,9 @@ func formatConfigs(workingConfigs []string, locator *geo_ip.Locator) ([]string, 
 	configsByCountry := make(map[string]int)
 
 	for i, config := range workingConfigs {
+		wg.Add(1)
+
 		go func() {
-			wg.Add(1)
 			defer wg.Done()
 			workersCh <- struct{}{}
 			defer func() {
@@ -151,10 +152,10 @@ func formatConfigs(workingConfigs []string, locator *geo_ip.Locator) ([]string, 
 
 			name, flag := locator.GetCountryNameAndFlag(parsedConfig.Hostname())
 			formatName(parsedConfig, name, flag, i)
-			configsByCountry[name]++
-
 			mu.Lock()
 			defer mu.Unlock()
+
+			configsByCountry[name]++
 			formattedConfigs = append(formattedConfigs, parsedConfig.String())
 		}()
 	}
@@ -204,7 +205,7 @@ func updateCacheAndFile(configs []string, configsCache *domain.SafeConfigsCache,
 	return fmt.Errorf("no configs to update")
 }
 
-func isCopy(config string, unique map[string]struct{}) (bool, error) {
+func isUnique(config string, unique map[string]struct{}) (bool, error) {
 	parsedConfig, err := url.Parse(config)
 	if err != nil {
 		log.Printf("failed to parse dirty config. error: %v", err)
@@ -215,8 +216,8 @@ func isCopy(config string, unique map[string]struct{}) (bool, error) {
 	configWithoutName := parsedConfig.String()
 	if _, exists := unique[configWithoutName]; !exists && parsedConfig.Scheme == "vless" {
 		unique[configWithoutName] = struct{}{}
-		return false, nil
+		return true, nil
 	}
 
-	return true, nil
+	return false, nil
 }

@@ -6,14 +6,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/rom5n/whitelist-download/domain"
+	"github.com/rom5n/whitelist-download/backend/domain"
 )
+
+func web(fileServer http.Handler, distFS fs.FS) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+
+		_, err := fs.Stat(distFS, path)
+		if os.IsNotExist(err) {
+			r.URL.Path = "/"
+		}
+
+		fileServer.ServeHTTP(w, r)
+	}
+}
 
 func setHeaders(w http.ResponseWriter, title, description string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

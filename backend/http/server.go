@@ -2,34 +2,45 @@ package http
 
 import (
 	"embed"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"strings"
 
-	"github.com/rom5n/whitelist-download/domain"
+	"github.com/rom5n/whitelist-download/backend/domain"
 )
 
-//go:embed dist/
-var static embed.FS
+//go:embed dist/*
+var staticFiles embed.FS
 
 func Start(configsPath string, configsCache *domain.SafeConfigsCache, statistic *domain.Statistic, subPath, port, subscriptionTitle, descriptionText string) {
 	ip := getIP()
 	subLink := "http://" + ip + ":" + port + subPath + "/15"
 	webLink := "http://" + ip + ":" + port + "/"
 
+	// Subscription paths
 	http.HandleFunc(subPath, subscriptionHandler(configsPath, configsCache, subscriptionTitle, descriptionText))
 	http.HandleFunc(subPath+"/", subscriptionHandler(configsPath, configsCache, subscriptionTitle, descriptionText))
 
-	http.Handle("/", http.FileServerFS(static))
-	http.Handle("/sub-link", http.HandlerFunc(getSubscriptionLink(subLink)))
-	http.Handle("/statistic", http.HandlerFunc(getStatistic(statistic)))
+	// api paths
+	http.Handle("/api/subscription-link", http.HandlerFunc(getSubscriptionLink(subLink)))
+	http.Handle("/api/statistics", http.HandlerFunc(getStatistic(statistic)))
+
+	distFS, err := fs.Sub(staticFiles, "dist")
+	if err != nil {
+		log.Fatal("failed to initialize embedded static files: ", err)
+	}
+	fileServer := http.FileServer(http.FS(distFS))
+
+	// web frontend path
+	http.HandleFunc("/", web(fileServer, distFS))
 
 	log.Printf("⚡ Server started on port: %v\n", port)
 	log.Printf("✨✨ Check subscriptions: %v\n", subLink)
 	log.Printf("🌊🌊 Check web: %v\n", webLink)
 
-	err := http.ListenAndServe("0.0.0.0:"+port, nil)
+	err = http.ListenAndServe("0.0.0.0:"+port, nil)
 	if err != nil {
 		log.Fatal("error while starting subscription server: ", err)
 	}

@@ -4,8 +4,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/rom5n/whitelist-download/domain"
-	"github.com/rom5n/whitelist-download/geo_ip"
+	"github.com/rom5n/whitelist-download/backend/domain"
+	"github.com/rom5n/whitelist-download/backend/geo_ip"
 )
 
 func StartPollingConfigs(configsPath string, configsCache *domain.SafeConfigsCache, statistic *domain.Statistic, sources []string, locator *geo_ip.Locator) {

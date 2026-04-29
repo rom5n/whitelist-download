@@ -1,9 +1,9 @@
-# 🌊 whitelist-download
+# 🌊 Whitelist Download
 <div align="center">
   <p align="center">
     <img src="https://img.shields.io/github/stars/rom5n/whitelist-download?style=for-the-badge&color=gold&logo=github" />
     <img src="https://img.shields.io/github/last-commit/rom5n/whitelist-download?style=for-the-badge&color=green" />
-    <img src="https://img.shields.io/badge/Configs-3000+-orange?style=for-the-badge&logo=serverless" />
+    <img src="https://img.shields.io/badge/Configs-3800+-orange?style=for-the-badge&logo=serverless" />
   </p>
 
 **Автоматический агрегатор VLESS-конфигов и локальный сервер подписок.**
@@ -18,12 +18,13 @@
 Скрипт предназначен для автоматического сбора бесплатных **VLESS-конфигов** из проверенных GitHub-репозиториев. Он объединяет тысячи серверов в одну компактную ссылку-подписку (Subscription link), которую "понимает" любой современный VPN-клиент.
 
 > [!IMPORTANT]
-> **3000+ актуальных конфигураций** обновляются каждый час в автоматическом режиме.
+> **3800+ актуальных конфигураций** обновляются каждый час в автоматическом режиме.
 
 ---
 
 ### ✨ Основные возможности
 
+- 🔄 **Web-дашборд:** Отслеживайте статистику конфигов и копируйте подписку.
 - 🔄 **Auto-Update:** Свежие конфиги каждый час без вашего участия.
 - 🌐 **Local Server:** Поднимает HTTP-сервер на порту `55000` для раздачи подписки.
 - 🪟 **Windows Stealth:** Автоматическая пропись в реестр и тихий запуск при старте системы.
@@ -63,6 +64,28 @@
 > Если ссылка не работает, проверьте ваш IPv4-адрес в настройках сети Windows и убедитесь, что телефон и ПК находятся в одной Wi-Fi сети, а так же на телефоне выключены все VPN/VLESS (после импорта подписки их можно снова включить).
 
 ---
+
+### 🛠️ Build самому (пример для Windows)
+1. Скопируйте репозиторий: `git clone https://github.com/rom5n/whitelist-download.git`
+2. Выполните:
+```bash
+cd whitelist-download\frontend
+yarn build
+cd ..\backend
+go build -ldflags "-H=windowsgui -s -w" -o wl-download.exe main.go
+```
+3. Запустите wl-download.exe
+
+### 🌐 Web-дашборд
+<div align="center">
+  <img src="images/main-page.png" alt="Главная страница" width="650">
+</div>
+
+#### Легко подключайте подписки, настраивая их лимиты
+#### Просматривайте статистику серверов по странам
+#### Просматривайте количество конфигов
+
+Находится по ссылке `http://<YOUR_IP>:55000/`, написанной в log.txt
 
 ### ⚙️ Параметры ссылки
 

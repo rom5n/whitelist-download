@@ -1,6 +1,7 @@
 package http
 
 import (
+	"embed"
 	"log"
 	"net"
 	"net/http"
@@ -9,12 +10,24 @@ import (
 	"github.com/rom5n/whitelist-download/domain"
 )
 
-func StartHttpSubscriptionServer(configsPath string, configsCache *domain.SafeConfigsCache, subPath, port, subscriptionTitle, descriptionText string) {
+//go:embed dist/
+var static embed.FS
+
+func Start(configsPath string, configsCache *domain.SafeConfigsCache, statistic *domain.Statistic, subPath, port, subscriptionTitle, descriptionText string) {
+	ip := getIP()
+	subLink := "http://" + ip + ":" + port + subPath + "/15"
+	webLink := "http://" + ip + ":" + port + "/"
+
 	http.HandleFunc(subPath, subscriptionHandler(configsPath, configsCache, subscriptionTitle, descriptionText))
 	http.HandleFunc(subPath+"/", subscriptionHandler(configsPath, configsCache, subscriptionTitle, descriptionText))
 
-	log.Printf("⚡ Subscription server started on port: %v\n", port)
-	log.Printf("✨✨ Check it: %v\n", "http://"+getIP()+":"+port+subPath+"/15")
+	http.Handle("/", http.FileServerFS(static))
+	http.Handle("/sub-link", http.HandlerFunc(getSubscriptionLink(subLink)))
+	http.Handle("/statistic", http.HandlerFunc(getStatistic(statistic)))
+
+	log.Printf("⚡ Server started on port: %v\n", port)
+	log.Printf("✨✨ Check subscriptions: %v\n", subLink)
+	log.Printf("🌊🌊 Check web: %v\n", webLink)
 
 	err := http.ListenAndServe("0.0.0.0:"+port, nil)
 	if err != nil {

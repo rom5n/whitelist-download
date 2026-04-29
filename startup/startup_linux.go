@@ -1,5 +1,12 @@
 package startup
 
+import (
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+)
+
 func Add(appName string) {
 	err := func() error {
 		exePath, err := os.Executable()

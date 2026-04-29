@@ -3,6 +3,7 @@ package http
 import (
 	"bufio"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -142,4 +143,24 @@ func getLimitForConfigs(r *http.Request) (int, int, error) {
 	}
 
 	return offset, limit, nil
+}
+
+func getSubscriptionLink(link string) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write([]byte(link))
+		return
+	}
+}
+
+func getStatistic(statistic *domain.Statistic) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+		err := json.NewEncoder(w).Encode(statistic)
+		if err != nil {
+			http.Error(w, "failed to get statistics", http.StatusInternalServerError)
+			return
+		}
+	}
 }

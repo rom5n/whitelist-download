@@ -5,19 +5,19 @@ import (
 	"time"
 
 	"github.com/rom5n/whitelist-download/domain"
+	"github.com/rom5n/whitelist-download/geo_ip"
 )
 
-func StartPollingConfigs(configsPath string, configsCache *domain.SafeConfigsCache, sources []string) {
+func StartPollingConfigs(configsPath string, configsCache *domain.SafeConfigsCache, statistic *domain.Statistic, sources []string, locator *geo_ip.Locator) {
 	for {
-		errNum := updateConfigs(configsPath, configsCache, sources)
-
-		if errNum == len(sources) {
-			log.Println("too many errors, trying again in 30 seconds...")
+		log.Println("starting polling configs")
+		if err := updateConfigs(configsPath, configsCache, statistic, sources, locator); err != nil {
+			log.Println("failed to update configs, trying again in 30 seconds...")
 			time.Sleep(30 * time.Second)
 			continue
 		}
 
-		log.Printf("sources updated successfully\n")
+		log.Printf("configs updated successfully\n")
 		time.Sleep(1 * time.Hour)
 	}
 }

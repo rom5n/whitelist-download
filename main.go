@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"log"
 	"os"
+	"time"
 
 	"github.com/rom5n/whitelist-download/config"
 	"github.com/rom5n/whitelist-download/configs_logic"
 	"github.com/rom5n/whitelist-download/domain"
-	server "github.com/rom5n/whitelist-download/http"
+	"github.com/rom5n/whitelist-download/geo_ip"
+	"github.com/rom5n/whitelist-download/http"
 	"github.com/rom5n/whitelist-download/logging"
 	"github.com/rom5n/whitelist-download/startup"
 )
@@ -41,12 +43,14 @@ func main() {
 
 	configsCache := &domain.SafeConfigsCache{}
 	sources := GetSources(cfg.Sources)
+	locator := geo_ip.InitLocator()
+	statistic := &domain.Statistic{StartedAt: time.Now().Unix()}
 
 	logging.ConfigureLogging(cfg.Logs)
 
 	startup.Add(cfg.AppName)
 
-	go configs_logic.StartPollingConfigs(cfg.Configs, configsCache, sources)
+	go configs_logic.StartPollingConfigs(cfg.Configs, configsCache, statistic, sources, locator)
 
-	server.StartHttpSubscriptionServer(cfg.Configs, configsCache, cfg.SubPath, cfg.Port, cfg.SubscriptionTitle, cfg.DescriptionText)
+	http.Start(cfg.Configs, configsCache, statistic, cfg.SubPath, cfg.Port, cfg.SubscriptionTitle, cfg.DescriptionText)
 }

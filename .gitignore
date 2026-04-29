@@ -4,6 +4,8 @@ log.txt
 
 whitelist-download-*
 
+node_modules
+
 *.zip
 wl-download.exe
 *.exe

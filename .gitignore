@@ -10,7 +10,7 @@ node_modules
 *.zed
 
 *.zip
-wl-download.exe
+whitelist-download-windows/wl-download.exe
 *.exe
 *.exe~
 *.dll

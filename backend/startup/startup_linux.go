@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/rom5n/whitelist-download/backend/config"
 )
 
 func Add(cfg *config.Config) {
@@ -30,7 +32,7 @@ func Add(cfg *config.Config) {
 			return fmt.Errorf("failed to create autostart directory: %w", err)
 		}
 
-		desktopFilePath := filepath.Join(autostartDir, appName+".desktop")
+		desktopFilePath := filepath.Join(autostartDir, cfg.AppName+".desktop")
 
 		desktopContent := fmt.Sprintf(`[Desktop Entry]
 Type=Application
@@ -40,7 +42,7 @@ NoDisplay=false
 X-GNOME-Autostart-enabled=true
 Name=%s
 Comment=Started automatically by Go program
-`, exePath, appName)
+`, exePath, cfg.AppName)
 
 		err = os.WriteFile(desktopFilePath, []byte(desktopContent), 0644)
 		if err != nil {

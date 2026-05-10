@@ -1,9 +1,9 @@
 # 🌊 Whitelist Download
 <div align="center">
   <p align="center">
-    <img src="https://img.shields.io/github/stars/rom5n/whitelist-download?style=for-the-badge&color=gold&logo=github" />
+    <img src="https://img.shields.io/github/stars/rom5n/whitelist-download?style=for-the-badge&color=gold&logso=github" />
     <img src="https://img.shields.io/github/last-commit/rom5n/whitelist-download?style=for-the-badge&color=green" />
-    <img src="https://img.shields.io/badge/Configs-3800+-orange?style=for-the-badge&logo=serverless" />
+    <img src="https://img.shields.io/badge/Configs-3800+-orange?style=for-the-badge&logso=serverless" />
   </p>
 
 **Автоматический агрегатор VLESS-конфигов и локальный сервер подписок.**
@@ -47,17 +47,16 @@
 
 #### 1. Установка (Windows)
 1. Скачайте zip-архив и разорхивируйте его в отдельную папку.
-2. Переименуйте файл '.env.example' в просто '.env'.
-3. Запустите. Программа сама создаст `configs.txt` и `log.txt`, и запустит локальный HTTP-сервер.
+2. Запустите. Программа сама создаст нужные файлы и запустит локальный HTTP-сервер.
 
 #### 1. Установка (Linux)
 1. Скачайте .tar.gz-архив и разорхивируйте его в отдельную папку.
 2. Прочитайте READ_ME.md в папке.
-3. Запустите. Программа сама создаст `configs.txt` и `log.txt`, и запустит локальный HTTP-сервер.
+3. Запустите. Программа сама создаст нужные файлы и запустит локальный HTTP-сервер.
 
 #### 2. Подключение в клиент
-1. Откройте `log.txt`.
-2. Скопируйте ссылку вида: `http://ВАШ_IP:55000/sub/15`.
+1. Откройте `logs.txt`.
+2. Скопируйте ссылку вида: `http://ВАШ_IP:55000/sub/15` или отсканируйте QR-код в [web-дашборде](https://github.com/rom5n/whitelist-download#-web-%D0%B4%D0%B0%D1%88%D0%B1%D0%BE%D1%80%D0%B4).
 3. Вставьте её в ваш клиент (**v2rayN**, **Nekobox**, **Hiddify**, **v2rayNG**).
 
 > [!TIP]
@@ -67,14 +66,16 @@
 
 ### 🛠️ Build самому (пример для Windows)
 1. Скопируйте репозиторий: `git clone https://github.com/rom5n/whitelist-download.git`
-2. Выполните:
+2. Установите Go версии 26.2 или выше с [официального сайта](https://go.dev/dl/)
+3. Установите yarn версии 1.22.22 или выше с [официального репозитория](https://github.com/yarnpkg/yarn/releases)
+4. Выполните:
 ```bash
 cd whitelist-download\frontend
 yarn build
 cd ..\backend
 go build -ldflags "-H=windowsgui -s -w" -o wl-download.exe main.go
 ```
-3. Запустите wl-download.exe
+5. Запустите wl-download.exe
 
 ### 🌐 Web-дашборд
 <div align="center">
@@ -83,9 +84,10 @@ go build -ldflags "-H=windowsgui -s -w" -o wl-download.exe main.go
 
 #### Легко подключайте подписки, настраивая их лимиты
 #### Просматривайте статистику серверов по странам
-#### Просматривайте количество конфигов
+#### Изменяйте настройки, добавляйте источники, изменяйте название и не только!
+#### Просматривайте логи
 
-Находится по ссылке `http://<YOUR_IP>:55000/`, написанной в log.txt
+#### Находится по ссылке [http://localhost:55000/](http://localhost:55000/)
 
 ### ⚙️ Параметры ссылки
 
@@ -101,10 +103,9 @@ go build -ldflags "-H=windowsgui -s -w" -o wl-download.exe main.go
 
 ### 📂 Файлы
 
-- 📄 `configs.txt` — Ваша локальная база конфигов. Перезаписывается каждый час.
-- 📝 `log.txt` — История работы, ошибки и ваш персональный адрес подписки.
-- 📝 `sources.txt` — Источники, откуда скачиваются конфиги.
-- 🛠️ `.example.env` — Настройки проекта.
+- 📄 `configs.txt` — Ваша локальная база конфигов. Перезаписывается каждый час (по умолчанию).
+- 📝 `logs.txt` — Логи программы.
+- 🛠️ `config.json` — Настройки проекта.
 - ⚙️ `wl-download.exe` — Основной бинарный файл. **Не перемещайте его после запуска!**. Если все же нужно переместить, то найдите в диспетчере задач процесс 'wl-download.exe' и завершите его, после переместите файл в новое место и запустите его.
 
 ---

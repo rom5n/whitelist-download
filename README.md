@@ -80,6 +80,7 @@ go build -ldflags "-H=windowsgui -s -w" -o wl-download.exe main.go
 ### 🌐 Web-дашборд
 <div align="center">
   <img src="images/main-page.png" alt="Главная страница" width="650">
+  <img src="images/main-page-white.png" alt="Главная страница" width="650">
 </div>
 
 #### Легко подключайте подписки, настраивая их лимиты

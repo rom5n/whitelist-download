@@ -6,6 +6,8 @@
     <img src="https://img.shields.io/badge/Configs-3800+-orange?style=for-the-badge&logso=serverless" />
   </p>
 
+  <img src="images/header.png" alt="Header" width="1434">
+
 **Автоматический агрегатор VLESS-конфигов и локальный сервер подписок.**
 
 *Ваш локальный сервер конфигов*

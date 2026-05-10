@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-func Add(appName string) {
+func Add(cfg *config.Config) {
 	err := func() error {
 		exePath, err := os.Executable()
 		if err != nil {

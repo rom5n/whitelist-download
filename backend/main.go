@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,53 +15,35 @@ import (
 	"github.com/rom5n/whitelist-download/backend/startup"
 )
 
-func GetSources(filepath string) []string {
-	file, err := os.OpenFile(filepath, os.O_RDONLY, 0666)
-	if err != nil {
-		log.Fatalf("error opening %v: %v\n", filepath, err)
-	}
-
-	unique := make(map[string]struct{})
-
-	scan := bufio.NewScanner(file)
-
-	sources := make([]string, 0)
-
-	for scan.Scan() {
-		text := scan.Text()
-
-		if _, exists := unique[text]; !exists {
-			sources = append(sources, text)
-		}
-	}
-
-	return sources
-}
-
 func main() {
-	time.Sleep(20 * time.Second)
+	time.Sleep(10 * time.Second)
 	setExecutableDir()
 
-	cfg := config.GetConfig()
+	cfg := config.Load()
+	startup.Add(cfg)
+	logging.Configure(cfg)
 
 	configsCache := &domain.SafeConfigsCache{}
-	sources := GetSources(cfg.Sources)
+	statistics := &domain.Statistics{StartedAt: time.Now().Unix()}
 	locator := geo_ip.InitLocator()
-	statistic := &domain.Statistic{StartedAt: time.Now().Unix()}
 
-	logging.ConfigureLogging(cfg.Logs)
+	go configs_logic.StartPollingConfigs(cfg, configsCache, statistics, locator)
 
-	startup.Add(cfg.AppName)
+	http.Start(cfg, configsCache, statistics, locator)
+}
 
-	go configs_logic.StartPollingConfigs(cfg.Configs, configsCache, statistic, sources, locator)
+type dg struct {}
 
-	http.Start(cfg.Configs, configsCache, statistic, cfg.SubPath, cfg.Port, cfg.SubscriptionTitle, cfg.DescriptionText)
+func FF() dg {
+	return dg{}	
 }
 
 func setExecutableDir() {
 	exePath, err := os.Executable()
 	if err == nil {
 		exeDir := filepath.Dir(exePath)
-		os.Chdir(exeDir)
+		if err = os.Chdir(exeDir); err != nil {
+			log.Fatalf("failed to change the directory name: %v\n", err)
+		}
 	}
 }

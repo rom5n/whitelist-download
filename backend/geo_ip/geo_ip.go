@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"log"
 	"net"
-	"os"
 	"strings"
 
 	"github.com/oschwald/geoip2-golang"
@@ -21,26 +20,8 @@ type Locator struct {
 	db *geoip2.Reader
 }
 
-func writeNewFile(data []byte) {
-	file, err := os.OpenFile(geoliteFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		log.Fatalf("failed to create temporary geolite file: %v", err)
-	}
-	n, err := file.Write(data)
-	if n == 0 {
-		log.Fatalln("geolite file is empty")
-	}
-
-	if err != nil {
-		log.Fatalf("failed to write to temporary geolite file: %v", err)
-	}
-
-	return
-}
-
 func InitLocator() *Locator {
-	writeNewFile(geoliteData)
-	db, err := geoip2.Open(geoliteFile)
+	db, err := geoip2.FromBytes(geoliteData)
 	if err != nil {
 		log.Fatalf("failed to open GeoIP database: %v", err)
 	}

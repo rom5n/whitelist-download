@@ -1,23 +1,50 @@
-:root {
-  --text: #e0e0e0;
-  --text-h: #ffffff;
-  --bg: #121212;
-  --border: #333333;
-  --code-bg: #1e1e1e;
-  --accent: #3b76ed;
-  --accent-bg: rgba(187, 134, 252, 0.1);
-  --accent-border: rgba(187, 134, 252, 0.5);
-  --shadow: rgba(0, 0, 0, 0.5) 0 10px 15px -3px, rgba(0, 0, 0, 0.3) 0 4px 6px -2px;
+@import "tailwindcss";
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+/* === Tailwind v4 Theme Config === */
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 
-  font-family: var(--sans);
-  color-scheme: dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
+  /* Accent & brand colors */
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-success: #22c55e;
+  --color-success-hover: #16a34a;
+  --color-danger: #ef4444;
+  --color-danger-hover: #dc2626;
+  --color-warn: #f59e0b;
+
+  /* Custom animations */
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.3s ease-out;
+  --animate-star-drift: star-drift 80s linear infinite;
+  --animate-star-drift-slow: star-drift 120s linear infinite;
+  --animate-star-drift-slower: star-drift 180s linear infinite;
+  --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes star-drift {
+  from { transform: translateY(0); }
+  to { transform: translateY(-100vh); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* === Base Styles === */
+html {
+  font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -29,11 +56,113 @@ body {
   min-height: 100vh;
 }
 
-* {
+*, *::before, *::after {
   box-sizing: border-box;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  color: var(--text-h);
-  font-family: var(--heading);
+/* === Dark Theme (default) === */
+.dark {
+  color-scheme: dark;
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #111118;
+  --color-bg-card: #16161f;
+  --color-bg-input: #0e0e15;
+  --color-border: #23232f;
+  --color-border-hover: #33334a;
+  --color-text-primary: #f0f0f5;
+  --color-text-secondary: #8888a0;
+  --color-text-muted: #55556a;
+  --color-glass: rgba(22, 22, 31, 0.7);
+  --color-glass-border: rgba(255, 255, 255, 0.06);
+  --color-star: rgba(255, 255, 255, 0.7);
+  --color-bg-gradient-start: #0f0f1a;
+  --color-bg-gradient-end: #060608;
+}
+
+/* === Light Theme === */
+.light {
+  color-scheme: light;
+  --color-bg-primary: #f5f5f7;
+  --color-bg-secondary: #eeeef0;
+  --color-bg-card: #ffffff;
+  --color-bg-input: #f0f0f3;
+  --color-border: #d8d8e0;
+  --color-border-hover: #b0b0c0;
+  --color-text-primary: #111118;
+  --color-text-secondary: #555568;
+  --color-text-muted: #888898;
+  --color-glass: rgba(255, 255, 255, 0.75);
+  --color-glass-border: rgba(0, 0, 0, 0.08);
+  --color-star: rgba(36, 82, 207, 0.595);
+  --color-bg-gradient-start: #e8e8f0;
+  --color-bg-gradient-end: #f5f5f7;
+}
+
+/* === Star Background Layer === */
+.stars-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, var(--color-bg-gradient-start) 0%, var(--color-bg-gradient-end) 100%);
+  overflow: hidden;
+}
+
+.stars-sm {
+  position: absolute;
+  width: 1px; height: 1px;
+  box-shadow:
+    10vw 10vh var(--color-star), 20vw 20vh var(--color-star), 30vw 50vh var(--color-star),
+    40vw 80vh var(--color-star), 50vw 30vh var(--color-star), 60vw 60vh var(--color-star),
+    70vw 90vh var(--color-star), 80vw 20vh var(--color-star), 90vw 40vh var(--color-star),
+    95vw 70vh var(--color-star), 15vw 80vh var(--color-star), 25vw 40vh var(--color-star),
+    35vw 15vh var(--color-star), 45vw 65vh var(--color-star), 55vw 85vh var(--color-star),
+    65vw 35vh var(--color-star), 75vw 15vh var(--color-star), 85vw 55vh var(--color-star),
+    5vw 95vh var(--color-star), 80vw 5vh var(--color-star), 10vw 90vh var(--color-star);
+  animation: var(--animate-star-drift);
+}
+
+.stars-md {
+  position: absolute;
+  width: 3px; height: 3px;
+  box-shadow:
+    15vw 10vh var(--color-star), 30vw 20vh var(--color-star), 45vw 50vh var(--color-star),
+    60vw 80vh var(--color-star), 75vw 30vh var(--color-star), 90vw 60vh var(--color-star),
+    5vw 90vh var(--color-star), 20vw 20vh var(--color-star), 35vw 40vh var(--color-star),
+    50vw 70vh var(--color-star), 65vw 80vh var(--color-star), 80vw 40vh var(--color-star),
+    95vw 15vh var(--color-star);
+  animation: var(--animate-star-drift-slow);
+}
+
+.stars-lg {
+  position: absolute;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  box-shadow:
+    20vw 15vh var(--color-star), 40vw 25vh var(--color-star), 60vw 55vh var(--color-star),
+    80vw 85vh var(--color-star), 10vw 35vh var(--color-star), 30vw 65vh var(--color-star),
+    50vw 95vh var(--color-star), 70vw 25vh var(--color-star), 90vw 45vh var(--color-star);
+  animation: var(--animate-star-drift-slower);
+}
+
+/* === Custom Scrollbars === */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
+
+/* === Card glass effect === */
+.glass-card {
+  background: var(--color-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-glass-border);
 }

@@ -6,11 +6,16 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rom5n/whitelist-download/backend/config"
 	"golang.org/x/sys/windows/registry"
 )
 
-func Add(appName string) {
+func Add(cfg *config.Config) {
 	err := func() error {
+		cfg.RLock()
+		appName := cfg.AppName
+		cfg.RUnlock()
+
 		exePath, err := os.Executable()
 		if err != nil {
 			return fmt.Errorf("failed to get executable file path: %w", err)

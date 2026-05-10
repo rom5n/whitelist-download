@@ -3,17 +3,24 @@ package http
 import (
 	"bufio"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
+
+	"github.com/goccy/go-json"
+	"github.com/rom5n/whitelist-download/backend/configs_logic"
+	"github.com/rom5n/whitelist-download/backend/geo_ip"
+
 	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/rom5n/whitelist-download/backend/config"
 	"github.com/rom5n/whitelist-download/backend/domain"
 )
 
@@ -43,8 +50,14 @@ func setHeaders(w http.ResponseWriter, title, description string) {
 	w.Header().Set("routing-enable", "true")
 }
 
-func subscriptionHandler(configsPath string, configsCache *domain.SafeConfigsCache, subscriptionTitle, descriptionText string) func(w http.ResponseWriter, r *http.Request) {
+func subscriptionHandler(cfg *config.Config, configsCache *domain.SafeConfigsCache) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg.RLock()
+		subscriptionTitle := cfg.SubscriptionTitle
+		descriptionText := cfg.DescriptionText
+		configsPath := cfg.ConfigsPath
+		cfg.RUnlock()
+
 		offset, limit, err := getLimitForConfigs(r)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -163,21 +176,138 @@ func getLimitForConfigs(r *http.Request) (int, int, error) {
 	return offset, limit, nil
 }
 
-func getSubscriptionLink(link string) func(w http.ResponseWriter, r *http.Request) {
+func getSubscriptionLink(cfg *config.Config, ip, port string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte(link))
+
+		cfg.RLock()
+		forcedIP := cfg.ForcedIP
+		subPath := cfg.SubscriptionPath
+		cfg.RUnlock()
+
+		if forcedIP != "" {
+			ip = forcedIP
+		}
+
+		subLink := fmt.Sprintf("%v://%v:%v%v", "http", ip, port, subPath+"/15")
+
+		w.Write([]byte(subLink))
 		return
 	}
 }
 
-func getStatistic(statistic *domain.Statistic) func(w http.ResponseWriter, r *http.Request) {
+func getStatistics(statistics *domain.Statistics) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
-		err := json.NewEncoder(w).Encode(statistic)
+		err := json.NewEncoder(w).Encode(statistics)
 		if err != nil {
 			http.Error(w, "failed to get statistics", http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func getConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+		err := json.NewEncoder(w).Encode(cfg)
+		if err != nil {
+			http.Error(w, "failed to get config", http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func setConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+		newConfig := &config.Config{}
+		if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
+			http.Error(w, "failed to decode config", http.StatusInternalServerError)
+			return
+		}
+		defer r.Body.Close()
+
+		if err := cfg.Set(newConfig); err != nil {
+			http.Error(w, "failed to set config", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func restart() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("restart called")
+		if runtime.GOOS == "linux" {
+			os.Exit(0)
+		}
+
+		exePath, err := os.Executable()
+		if err != nil {
+			log.Printf("failed to get program's path while restarting: %v", err)
+			return
+		}
+
+		cmd := exec.Command(exePath, os.Args[1:]...)
+
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		err = cmd.Start()
+		if err != nil {
+			log.Printf("failed to restart: %v", err)
+			return
+		}
+
+		os.Exit(0)
+	}
+}
+
+func updateConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+		cfg.RLock()
+		configsPath := cfg.ConfigsPath
+		sources := cfg.Sources
+		cfg.RUnlock()
+
+		result, err := configs_logic.UpdateConfigs(configsPath, configsCache, sources, locator)
+		if err != nil {
+			log.Printf("failed to force update configs: %v", err)
+			http.Error(w, "failed to force update configs", http.StatusInternalServerError)
+			return
+		}
+
+		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry}
+		statistics.Set(update)
+
+		log.Printf("force updated configs: %v. copies skipped: %v. isn't working skipped: %v\n", result.AmountConfigs, result.Copies, result.NotWorking)
+
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func getLogs(path string) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+		file := domain.GetFile(path)
+		defer file.Close()
+
+		writer := bufio.NewWriter(w)
+		reader := bufio.NewReader(file)
+		if _, err := writer.ReadFrom(reader); err != nil {
+			http.Error(w, "failed to read logs", http.StatusInternalServerError)
+			return
+		}
+		if err := writer.Flush(); err != nil {
+			http.Error(w, "failed to flush logs", http.StatusInternalServerError)
 			return
 		}
 	}

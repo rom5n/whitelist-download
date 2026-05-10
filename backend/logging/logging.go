@@ -3,15 +3,20 @@ package logging
 import (
 	"log"
 
+	"github.com/rom5n/whitelist-download/backend/config"
 	"github.com/rom5n/whitelist-download/backend/domain"
 )
 
-func ConfigureLogging(filepath string) {
-	logFile := domain.GetFile(filepath)
+func Configure(cfg *config.Config) {
+	cfg.RLock()
+	path := cfg.LogsPath
+	cfg.RUnlock()
+
+	logFile := domain.GetFile(path)
 
 	log.SetOutput(logFile)
 
-	resetFile(logFile, filepath)
+	resetFile(logFile, path)
 }
 
 func resetFile(file *domain.SafeFile, name string) {

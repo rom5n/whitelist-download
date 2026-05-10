@@ -10,11 +10,21 @@ type SafeConfigsCache struct {
 func (c *SafeConfigsCache) Set(configs []string) {
 	c.RWMutex.Lock()
 	defer c.RWMutex.Unlock()
-	c.configs = configs
+
+	newConfigs := make([]string, len(configs))
+	copy(newConfigs, configs)
+	c.configs = newConfigs
 }
 
 func (c *SafeConfigsCache) Get() []string {
 	c.RWMutex.RLock()
 	defer c.RWMutex.RUnlock()
-	return c.configs
+
+	if c.configs == nil {
+		return nil
+	}
+
+	result := make([]string, len(c.configs))
+	copy(result, c.configs)
+	return result
 }

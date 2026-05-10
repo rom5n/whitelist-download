@@ -1,10 +1,13 @@
 configs.txt
 log.txt
 *.log
+AGENTS.md
 
 whitelist-download-*
+wl-*
 
 node_modules
+*.zed
 
 *.zip
 wl-download.exe

@@ -2,14 +2,11 @@ module github.com/rom5n/whitelist-download
 
 go 1.26.2
 
-require (
-	github.com/caarlos0/env/v11 v11.4.0
-	golang.org/x/sys v0.43.0
-)
-
-require github.com/joho/godotenv v1.5.1
+require golang.org/x/sys v0.43.0
 
 require (
-	github.com/oschwald/geoip2-golang v1.13.0 // indirect
-	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
+	github.com/goccy/go-json v0.10.6
+	github.com/oschwald/geoip2-golang v1.13.0
 )
+
+require github.com/oschwald/maxminddb-golang v1.13.0 // indirect

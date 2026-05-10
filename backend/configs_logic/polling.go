@@ -4,20 +4,33 @@ import (
 	"log"
 	"time"
 
+	"github.com/rom5n/whitelist-download/backend/config"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 )
 
-func StartPollingConfigs(configsPath string, configsCache *domain.SafeConfigsCache, statistic *domain.Statistic, sources []string, locator *geo_ip.Locator) {
+func StartPollingConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) {
 	for {
+		cfg.RLock()
+		configsPath := cfg.ConfigsPath
+		sources := cfg.Sources
+		timeout := cfg.UpdateInterval
+		cfg.RUnlock()
+
 		log.Println("starting polling configs")
-		if err := updateConfigs(configsPath, configsCache, statistic, sources, locator); err != nil {
+		result, err := UpdateConfigs(configsPath, configsCache, sources, locator)
+		if err != nil {
 			log.Println("failed to update configs, trying again in 30 seconds...")
 			time.Sleep(30 * time.Second)
 			continue
 		}
 
+		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry}
+		statistics.Set(update)
+
+		log.Printf("updated configs: %v. copies skipped: %v. Isn't working skipped: %v\n", result.AmountConfigs, result.Copies, result.NotWorking)
+
 		log.Printf("configs updated successfully\n")
-		time.Sleep(1 * time.Hour)
+		time.Sleep(time.Duration(timeout) * time.Minute)
 	}
 }

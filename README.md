@@ -1,12 +1,11 @@
-# 🌊 Whitelist Download
 <div align="center">
+  <img src="images/header.png" alt="Header" width="1434">
   <p align="center">
     <img src="https://img.shields.io/github/stars/rom5n/whitelist-download?style=for-the-badge&color=gold&logso=github" />
     <img src="https://img.shields.io/github/last-commit/rom5n/whitelist-download?style=for-the-badge&color=green" />
     <img src="https://img.shields.io/badge/Configs-3800+-orange?style=for-the-badge&logso=serverless" />
   </p>
 
-  <img src="images/header.png" alt="Header" width="1434">
 
 **Автоматический агрегатор VLESS-конфигов и локальный сервер подписок.**
 

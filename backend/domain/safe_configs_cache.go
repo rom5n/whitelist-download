@@ -1,22 +1,23 @@
 package domain
 
-import "sync"
+import (
+	"maps"
+	"sync"
+)
 
 type SafeConfigsCache struct {
 	sync.RWMutex
-	configs []string
+	configs map[string][]string // Key: country, value: configs list
 }
 
-func (c *SafeConfigsCache) Set(configs []string) {
+func (c *SafeConfigsCache) Set(configs map[string][]string) {
 	c.RWMutex.Lock()
 	defer c.RWMutex.Unlock()
 
-	newConfigs := make([]string, len(configs))
-	copy(newConfigs, configs)
-	c.configs = newConfigs
+	c.configs = maps.Clone(configs)
 }
 
-func (c *SafeConfigsCache) Get() []string {
+func (c *SafeConfigsCache) Get() map[string][]string {
 	c.RWMutex.RLock()
 	defer c.RWMutex.RUnlock()
 
@@ -24,7 +25,5 @@ func (c *SafeConfigsCache) Get() []string {
 		return nil
 	}
 
-	result := make([]string, len(c.configs))
-	copy(result, c.configs)
-	return result
+	return maps.Clone(c.configs)
 }

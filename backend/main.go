@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/rom5n/whitelist-download/backend/aggregator"
 	"github.com/rom5n/whitelist-download/backend/config"
-	"github.com/rom5n/whitelist-download/backend/configs_logic"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 	"github.com/rom5n/whitelist-download/backend/http"
@@ -29,7 +29,7 @@ func main() {
 	statistics := &domain.Statistics{StartedAt: time.Now().Unix()}
 	locator := geo_ip.InitLocator()
 
-	go configs_logic.StartPollingConfigs(cfg, configsCache, statistics, locator)
+	go aggregator.StartPollingConfigs(cfg, configsCache, statistics, locator)
 
 	http.Start(cfg, configsCache, statistics, locator)
 }

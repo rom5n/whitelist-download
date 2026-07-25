@@ -44,7 +44,7 @@ func startupLogs(cfg *serverConfig) {
 }
 
 func getServerConfig(cfg *config.Config) *serverConfig {
-	cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Port, config.ForcedIP)
+	cfgSafe := cfg.RetrieveSafe(config.SubscriptionPath, config.Port, config.ForcedIP)
 	subPath := cfgSafe.SubscriptionPath
 	port := cfgSafe.Port
 	forcedIP := cfgSafe.ForcedIP

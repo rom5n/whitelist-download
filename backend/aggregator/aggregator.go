@@ -1,4 +1,4 @@
-package configs_logic
+package aggregator
 
 import (
 	"github.com/rom5n/whitelist-download/backend/logging"
@@ -12,15 +12,16 @@ import (
 
 func StartPollingConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) {
 	for {
-		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.UpdateInterval)
+		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.UpdateInterval, config.WorkingCheckLevel)
 		configsPath := cfgSafe.ConfigsPath
 		sources := cfgSafe.Sources
 		timeout := cfgSafe.UpdateInterval
+		workingCheckLevel := cfgSafe.WorkingCheckLevel
 
 		logging.Log.Info("starting polling configs")
-		result, err := UpdateConfigs(configsPath, configsCache, sources, locator)
+		result, err := UpdateConfigs(configsPath, configsCache, sources, locator, workingCheckLevel)
 		if err != nil {
-			logging.Log.Info("failed to update configs, trying again in 30 seconds...")
+			logging.Log.Error("failed to update configs, trying again in 30 seconds...", zap.Error(err))
 			time.Sleep(30 * time.Second)
 			continue
 		}

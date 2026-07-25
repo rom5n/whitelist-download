@@ -14,13 +14,14 @@ const LogPath = "app.log"
 func Initialize() {
 	file := getFile(LogPath)
 	resetFile(file)
+	log.SetOutput(file)
 	setLogger()
 }
 
 func setLogger() {
 	cfg := zap.NewProductionConfig()
-	cfg.OutputPaths = []string{"stdout", LogPath}
-	cfg.ErrorOutputPaths = []string{"stderr", LogPath}
+	cfg.OutputPaths = []string{LogPath}
+	cfg.ErrorOutputPaths = []string{LogPath}
 
 	var err error
 	Log, err = cfg.Build()

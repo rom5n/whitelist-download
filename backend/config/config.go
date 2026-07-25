@@ -23,6 +23,7 @@ const (
 	UpdateInterval    Field = "UpdateInterval"
 	Sources           Field = "Sources"
 	ForcedIP          Field = "ForcedIP"
+	WorkingCheckLevel Field = "WorkingCheckLevel"
 )
 
 type Config struct {
@@ -36,6 +37,7 @@ type Config struct {
 	UpdateInterval    int      `json:"update_interval_minutes"`  // Interval in minutes for configs auto update
 	Sources           []string `json:"sources"`                  // Configs sources
 	ForcedIP          string   `json:"forced_ip"`                // Forced IP if your system identified invalid ip address (often happens on VPS servers)
+	WorkingCheckLevel int      `json:"working_check_level"`      // 1 or 2. 1 - ping test, 2 - xray core test
 }
 
 // defaultCfg Default app config
@@ -48,6 +50,7 @@ var defaultCfg = Config{
 	SubscriptionPath:  "/sub",
 	UpdateInterval:    60,
 	ForcedIP:          "",
+	WorkingCheckLevel: 1,
 	Sources: []string{
 		"https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt",
 		"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
@@ -82,7 +85,7 @@ func Load() *Config {
 }
 
 func DefaultConfig(configPath string) *Config {
-	logging.Log.Info("file config.json not found. using defaults.")
+	logging.Log.Warn("file config.json not found. using defaults.")
 
 	defaultJSON, _ := json.MarshalIndent(&defaultCfg, "", "  ")
 
@@ -166,7 +169,11 @@ func (config *Config) RetrieveSafe(fields ...Field) *Config {
 		case ForcedIP:
 			cfg.ForcedIP = config.ForcedIP
 		case Sources:
-			copy(cfg.Sources, config.Sources)
+			sources := make([]string, len(config.Sources))
+			copy(sources, config.Sources)
+			cfg.Sources = sources
+		case WorkingCheckLevel:
+			cfg.WorkingCheckLevel = config.WorkingCheckLevel
 		}
 	}
 

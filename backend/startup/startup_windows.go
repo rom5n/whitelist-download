@@ -2,7 +2,8 @@ package startup
 
 import (
 	"fmt"
-	"log"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 
@@ -40,8 +41,8 @@ func Add(cfg *config.Config) {
 	}()
 
 	if err != nil {
-		log.Printf("failed to add to startup: %v\n", err)
+		logging.Log.Error("failed to add to startup", zap.Error(err))
 	} else {
-		log.Println("added to startup")
+		logging.Log.Info("added to startup")
 	}
 }

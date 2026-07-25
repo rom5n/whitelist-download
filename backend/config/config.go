@@ -2,7 +2,8 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"sync"
@@ -10,27 +11,40 @@ import (
 	"github.com/goccy/go-json"
 )
 
+type Field string
+
+const (
+	AppName           Field = "AppName"
+	SubscriptionTitle Field = "SubscriptionTitle"
+	DescriptionText   Field = "DescriptionText"
+	Port              Field = "Port"
+	ConfigsPath       Field = "ConfigsPath"
+	SubscriptionPath  Field = "SubscriptionPath"
+	UpdateInterval    Field = "UpdateInterval"
+	Sources           Field = "Sources"
+	ForcedIP          Field = "ForcedIP"
+)
+
 type Config struct {
 	sync.RWMutex      `json:"-"`
-	AppName           string   `json:"app_name"`
-	SubscriptionTitle string   `json:"subscription_title"`
-	DescriptionText   string   `json:"description_text"`
-	Port              string   `json:"port" jsonDefault:"55000"`
-	ConfigsPath       string   `json:"configs_path"`
-	LogsPath          string   `json:"logs_path"`
-	SubscriptionPath  string   `json:"subscription_path"`
-	UpdateInterval    int      `json:"update_interval_minutes"`
-	Sources           []string `json:"sources"`
-	ForcedIP          string   `json:"forced_ip"`
+	AppName           string   `json:"app_name"`                 // Local system app name
+	SubscriptionTitle string   `json:"subscription_title"`       // Subscription title in your client app
+	DescriptionText   string   `json:"description_text"`         // Description in your client app
+	Port              string   `json:"port" jsonDefault:"55000"` // App's port in your system
+	ConfigsPath       string   `json:"configs_path"`             // Path for configs. For example: configs.txt
+	SubscriptionPath  string   `json:"subscription_path"`        // Sub-path for subscription. For example: /sub - will be available in localhost:port/sub
+	UpdateInterval    int      `json:"update_interval_minutes"`  // Interval in minutes for configs auto update
+	Sources           []string `json:"sources"`                  // Configs sources
+	ForcedIP          string   `json:"forced_ip"`                // Forced IP if your system identified invalid ip address (often happens on VPS servers)
 }
 
-var defaultConfig = Config{
+// defaultCfg Default app config
+var defaultCfg = Config{
 	AppName:           "WhitelistsDownload",
 	SubscriptionTitle: "🌊 OpenSource VPN",
 	DescriptionText:   "⚡ Subscriptions from open sources",
 	Port:              "55000",
 	ConfigsPath:       "configs.txt",
-	LogsPath:          "logs.txt",
 	SubscriptionPath:  "/sub",
 	UpdateInterval:    60,
 	ForcedIP:          "",
@@ -45,34 +59,38 @@ var defaultConfig = Config{
 func Load() *Config {
 	exePath, err := os.Executable()
 	if err != nil {
-		log.Fatalf("failed to get path: %v", err)
+		logging.Log.Fatal("failed to get executable file path", zap.Error(err))
 	}
-	exeDir := filepath.Dir(exePath)
 
+	exeDir := filepath.Dir(exePath)
 	configPath := filepath.Join(exeDir, "config.json")
 
 	fileData, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Println("File config.json not found. Using defaults.")
-
-			defaultJSON, _ := json.MarshalIndent(&defaultConfig, "", "  ")
-
-			if err := os.WriteFile(configPath, defaultJSON, 0644); err != nil {
-				log.Fatalf("Не удалось создать config.json: %v", err)
-			}
-
-			return &defaultConfig
+			return DefaultConfig(configPath)
 		}
-		log.Fatalf("Ошибка чтения config.json: %v", err)
+		logging.Log.Fatal("failed to read file config.json", zap.Error(err))
 	}
 
 	var currentConfig Config
-	if err := json.Unmarshal(fileData, &currentConfig); err != nil {
-		log.Fatalf("Ошибка синтаксиса в config.json: %v\nПожалуйста, исправьте файл или удалите его для сброса.", err)
+	if err = json.Unmarshal(fileData, &currentConfig); err != nil {
+		logging.Log.Fatal("syntax error in config.json. fix the file or delete it to use default app config", zap.Error(err))
 	}
 
 	return &currentConfig
+}
+
+func DefaultConfig(configPath string) *Config {
+	logging.Log.Info("file config.json not found. using defaults.")
+
+	defaultJSON, _ := json.MarshalIndent(&defaultCfg, "", "  ")
+
+	if err := os.WriteFile(configPath, defaultJSON, 0644); err != nil {
+		logging.Log.Fatal("failed to create file config.json", zap.Error(err))
+	}
+
+	return &defaultCfg
 }
 
 func (config *Config) Set(new *Config) error {
@@ -87,11 +105,10 @@ func (config *Config) Set(new *Config) error {
 	config.Sources = new.Sources
 	config.SubscriptionPath = new.SubscriptionPath
 	config.UpdateInterval = new.UpdateInterval
-	config.LogsPath = new.LogsPath
 	config.ForcedIP = new.ForcedIP
 
 	if err := config.Save(); err != nil {
-		return fmt.Errorf("save config: %v", err)
+		return fmt.Errorf("save config: %w", err)
 	}
 
 	return nil
@@ -124,4 +141,34 @@ func (config *Config) Save() error {
 	}
 
 	return nil
+}
+
+func (config *Config) RetrieveSafe(fields ...Field) *Config {
+	config.RLock()
+	defer config.RUnlock()
+	var cfg Config
+	for _, field := range fields {
+		switch field {
+		case AppName:
+			cfg.AppName = config.AppName
+		case SubscriptionTitle:
+			cfg.SubscriptionTitle = config.SubscriptionTitle
+		case DescriptionText:
+			cfg.DescriptionText = config.DescriptionText
+		case Port:
+			cfg.Port = config.Port
+		case ConfigsPath:
+			cfg.ConfigsPath = config.ConfigsPath
+		case SubscriptionPath:
+			cfg.SubscriptionPath = config.SubscriptionPath
+		case UpdateInterval:
+			cfg.UpdateInterval = config.UpdateInterval
+		case ForcedIP:
+			cfg.ForcedIP = config.ForcedIP
+		case Sources:
+			copy(cfg.Sources, config.Sources)
+		}
+	}
+
+	return &cfg
 }

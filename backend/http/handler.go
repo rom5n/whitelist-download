@@ -4,14 +4,14 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
-
 	"github.com/goccy/go-json"
 	"github.com/rom5n/whitelist-download/backend/configs_logic"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 
 	"io"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -40,7 +40,7 @@ func web(fileServer http.Handler, distFS fs.FS) func(w http.ResponseWriter, r *h
 	}
 }
 
-func setHeaders(w http.ResponseWriter, title, description string) {
+func setSubscriptionHeaders(w http.ResponseWriter, title, description string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("profile-update-interval", "1")
 	w.Header().Set("subscription-userinfo", "upload=0; download=0; total=0; expire=0")
@@ -52,11 +52,10 @@ func setHeaders(w http.ResponseWriter, title, description string) {
 
 func subscriptionHandler(cfg *config.Config, configsCache *domain.SafeConfigsCache) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cfg.RLock()
-		subscriptionTitle := cfg.SubscriptionTitle
-		descriptionText := cfg.DescriptionText
-		configsPath := cfg.ConfigsPath
-		cfg.RUnlock()
+		cfgSafe := cfg.RetrieveSafe(config.SubscriptionTitle, config.DescriptionText, config.ConfigsPath)
+		subscriptionTitle := cfgSafe.SubscriptionTitle
+		descriptionText := cfgSafe.DescriptionText
+		configsPath := cfgSafe.ConfigsPath
 
 		offset, limit, err := getLimitForConfigs(r)
 		if err != nil {
@@ -68,25 +67,25 @@ func subscriptionHandler(cfg *config.Config, configsCache *domain.SafeConfigsCac
 		title := base64.StdEncoding.EncodeToString([]byte(subscriptionTitle))
 		description := base64.StdEncoding.EncodeToString([]byte(descriptionText))
 
-		setHeaders(w, title, description)
+		setSubscriptionHeaders(w, title, description)
 
 		encoder := base64.NewEncoder(base64.StdEncoding, w)
 		defer encoder.Close()
 
-		addedConfigs := getConfigsFromCache(configsCache, encoder, offset, limit)
+		addedConfigs := sendConfigsFromCache(configsCache, encoder, offset, limit)
 
 		if addedConfigs == 0 {
-			log.Printf("cache missed. Loading configs from file: %v\n", configsPath)
+			logging.Log.Info("cache missed. Loading configs from file", zap.String("filename", configsPath))
 			configsFile := domain.GetFile(configsPath)
 			defer configsFile.Close()
-			addedConfigs = getConfigsFromFile(configsFile, encoder, offset, limit)
+			addedConfigs = sendConfigsFromFile(configsFile, encoder, offset, limit)
 		}
 
-		log.Printf("configs sent. Amount: %v. Offset: %v. limit: %v.\n", addedConfigs, offset, limit)
+		logging.Log.Info("configs sent", zap.Int("amount", addedConfigs), zap.Int("offset", offset), zap.Int("limit", limit))
 	}
 }
 
-func getConfigsFromCache(configsCache *domain.SafeConfigsCache, encoder io.WriteCloser, offset int, limit int) int {
+func sendConfigsFromCache(configsCache *domain.SafeConfigsCache, encoder io.WriteCloser, offset int, limit int) int {
 	addedConfigs := 0
 
 	for i, text := range configsCache.Get() {
@@ -107,12 +106,11 @@ func getConfigsFromCache(configsCache *domain.SafeConfigsCache, encoder io.Write
 	return addedConfigs
 }
 
-func getConfigsFromFile(configsFile *domain.SafeFile, encoder io.WriteCloser, offset, limit int) int {
+func sendConfigsFromFile(configsFile *domain.SafeFile, encoder io.WriteCloser, offset, limit int) int {
 	addedConfigs := 0
-
 	scan := bufio.NewScanner(configsFile)
-
 	currentLine := 1
+
 	for scan.Scan() {
 		if currentLine < offset {
 			currentLine++
@@ -126,14 +124,12 @@ func getConfigsFromFile(configsFile *domain.SafeFile, encoder io.WriteCloser, of
 		if limit > 0 && addedConfigs >= limit {
 			break
 		}
-
 		currentLine++
 	}
 
 	if err := scan.Err(); err != nil {
-		log.Println("failed to read config file", err)
+		logging.Log.Info("failed to read config file", zap.Error(err))
 	}
-
 	return addedConfigs
 }
 
@@ -150,20 +146,20 @@ func getLimitForConfigs(r *http.Request) (int, int, error) {
 
 		limit, err = strconv.Atoi(data[0])
 		if err != nil {
-			log.Println("invalid limit for requested configs")
+			logging.Log.Info("invalid limit for requested configs")
 			return 0, 0, fmt.Errorf("invalid limit")
 		}
 
 		if len(data) == 2 {
 			offset, err = strconv.Atoi(data[0])
 			if err != nil {
-				log.Println("invalid offset foe requested configs")
+				logging.Log.Info("invalid offset foe requested configs")
 				return 0, 0, fmt.Errorf("invalid offset for requested configs")
 			}
 
 			limit, err = strconv.Atoi(data[1])
 			if err != nil {
-				log.Println("invalid limit for requested configs")
+				logging.Log.Info("invalid limit for requested configs")
 				return 0, 0, fmt.Errorf("invalid limit for requested configs")
 			}
 		}
@@ -180,10 +176,9 @@ func getSubscriptionLink(cfg *config.Config, ip, port string) func(w http.Respon
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-		cfg.RLock()
-		forcedIP := cfg.ForcedIP
-		subPath := cfg.SubscriptionPath
-		cfg.RUnlock()
+		cfgSafe := cfg.RetrieveSafe(config.ForcedIP, config.SubscriptionPath)
+		forcedIP := cfgSafe.ForcedIP
+		subPath := cfgSafe.SubscriptionPath
 
 		if forcedIP != "" {
 			ip = forcedIP
@@ -242,14 +237,14 @@ func setConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) 
 
 func restart() func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log.Println("restart called")
+		logging.Log.Info("restart called")
 		if runtime.GOOS == "linux" {
 			os.Exit(0)
 		}
 
 		exePath, err := os.Executable()
 		if err != nil {
-			log.Printf("failed to get program's path while restarting: %v", err)
+			logging.Log.Info("failed to get program's path while restarting", zap.Error(err))
 			return
 		}
 
@@ -260,7 +255,7 @@ func restart() func(w http.ResponseWriter, r *http.Request) {
 
 		err = cmd.Start()
 		if err != nil {
-			log.Printf("failed to restart: %v", err)
+			logging.Log.Info("failed to restart", zap.Error(err))
 			return
 		}
 
@@ -272,14 +267,13 @@ func updateConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, st
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-		cfg.RLock()
-		configsPath := cfg.ConfigsPath
-		sources := cfg.Sources
-		cfg.RUnlock()
+		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources)
+		configsPath := cfgSafe.ConfigsPath
+		sources := cfgSafe.Sources
 
 		result, err := configs_logic.UpdateConfigs(configsPath, configsCache, sources, locator)
 		if err != nil {
-			log.Printf("failed to force update configs: %v", err)
+			logging.Log.Info("failed to force update configs", zap.Error(err))
 			http.Error(w, "failed to force update configs", http.StatusInternalServerError)
 			return
 		}
@@ -287,7 +281,7 @@ func updateConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, st
 		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry}
 		statistics.Set(update)
 
-		log.Printf("force updated configs: %v. copies skipped: %v. isn't working skipped: %v\n", result.AmountConfigs, result.Copies, result.NotWorking)
+		logging.Log.Info("force update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking))
 
 		w.WriteHeader(http.StatusOK)
 	}

@@ -1,7 +1,8 @@
 package configs_logic
 
 import (
-	"log"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 	"time"
 
 	"github.com/rom5n/whitelist-download/backend/config"
@@ -11,16 +12,15 @@ import (
 
 func StartPollingConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) {
 	for {
-		cfg.RLock()
-		configsPath := cfg.ConfigsPath
-		sources := cfg.Sources
-		timeout := cfg.UpdateInterval
-		cfg.RUnlock()
+		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.UpdateInterval)
+		configsPath := cfgSafe.ConfigsPath
+		sources := cfgSafe.Sources
+		timeout := cfgSafe.UpdateInterval
 
-		log.Println("starting polling configs")
+		logging.Log.Info("starting polling configs")
 		result, err := UpdateConfigs(configsPath, configsCache, sources, locator)
 		if err != nil {
-			log.Println("failed to update configs, trying again in 30 seconds...")
+			logging.Log.Info("failed to update configs, trying again in 30 seconds...")
 			time.Sleep(30 * time.Second)
 			continue
 		}
@@ -28,9 +28,9 @@ func StartPollingConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCac
 		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry}
 		statistics.Set(update)
 
-		log.Printf("updated configs: %v. copies skipped: %v. Isn't working skipped: %v\n", result.AmountConfigs, result.Copies, result.NotWorking)
+		logging.Log.Info("update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking))
 
-		log.Printf("configs updated successfully\n")
+		logging.Log.Info("configs updated successfully")
 		time.Sleep(time.Duration(timeout) * time.Minute)
 	}
 }

@@ -2,15 +2,12 @@ package geo_ip
 
 import (
 	_ "embed"
-	"log"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 	"net"
 	"strings"
 
 	"github.com/oschwald/geoip2-golang"
-)
-
-const (
-	geoliteFile = "geolite_temp.mmdb"
 )
 
 //go:embed geolite.mmdb
@@ -23,7 +20,7 @@ type Locator struct {
 func InitLocator() *Locator {
 	db, err := geoip2.FromBytes(geoliteData)
 	if err != nil {
-		log.Fatalf("failed to open GeoIP database: %v", err)
+		logging.Log.Fatal("failed to open GeoIP database", zap.Error(err))
 	}
 
 	return &Locator{db: db}

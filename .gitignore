@@ -1,7 +1,6 @@
 configs.txt
 log.txt
 *.log
-AGENTS.md
 
 whitelist-download-*
 wl-*

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,11 +17,11 @@ import (
 
 func main() {
 	time.Sleep(10 * time.Second)
+	logging.Initialize()
 	setExecutableDir()
 
 	cfg := config.Load()
 	startup.Add(cfg)
-	logging.Configure(cfg)
 
 	configsCache := &domain.SafeConfigsCache{}
 	statistics := &domain.Statistics{StartedAt: time.Now().Unix()}
@@ -32,18 +32,12 @@ func main() {
 	http.Start(cfg, configsCache, statistics, locator)
 }
 
-type dg struct {}
-
-func FF() dg {
-	return dg{}	
-}
-
 func setExecutableDir() {
 	exePath, err := os.Executable()
 	if err == nil {
 		exeDir := filepath.Dir(exePath)
 		if err = os.Chdir(exeDir); err != nil {
-			log.Fatalf("failed to change the directory name: %v\n", err)
+			logging.Log.Fatal("failed to change the executable directory name", zap.Error(err))
 		}
 	}
 }

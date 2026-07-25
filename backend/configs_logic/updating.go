@@ -5,7 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"github.com/rom5n/whitelist-download/backend/domain"
+	"github.com/rom5n/whitelist-download/backend/geo_ip"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,9 +17,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/rom5n/whitelist-download/backend/domain"
-	"github.com/rom5n/whitelist-download/backend/geo_ip"
 )
 
 const (
@@ -41,25 +41,25 @@ func UpdateConfigs(configsPath string, configsCache *domain.SafeConfigsCache, so
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
 	defer cancel()
 
-	log.Println("getting configs")
+	logging.Log.Info("getting configs")
 	configs, copies, err := getConfigs(ctx, sources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configs: %w", err)
 	}
 
-	log.Println("checking configs for availability")
+	logging.Log.Info("checking configs for availability")
 	workingConfigs, err := filterWorkingConfigs(configs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to filter working configs: %w", err)
 	}
 
-	log.Println("formatting configs")
+	logging.Log.Info("formatting configs")
 	formattedConfigs, configsByCountry, err := formatConfigs(workingConfigs, locator)
 	if err != nil {
 		return nil, fmt.Errorf("failed to format configs: %w", err)
 	}
 
-	log.Println("updating cache and file")
+	logging.Log.Info("updating cache and file")
 	if err := updateCacheAndFile(formattedConfigs, configsCache, configsPath); err != nil {
 		return nil, fmt.Errorf("failed to update cache and file: %w", err)
 	}
@@ -127,7 +127,7 @@ func getConfigs(ctx context.Context, sources []string) ([]string, int, error) {
 	}
 
 	if allErrors != nil {
-		log.Printf("warning: some sources failed to fetch: %v\n", allErrors)
+		logging.Log.Warn("some sources failed to fetch", zap.Error(allErrors))
 	}
 
 	return uniqueConfigs, copies, nil
@@ -207,7 +207,7 @@ func filterWorkingConfigs(uniqueConfigs []string) ([]string, error) {
 	}
 
 	if allErrors != nil {
-		log.Printf("warning: some errors while checking configs for availability: %v\n", allErrors)
+		logging.Log.Warn("some errors while checking configs for availability", zap.Error(allErrors))
 	}
 
 	return workingConfigs, nil
@@ -258,7 +258,7 @@ func formatConfigs(workingConfigs []string, locator *geo_ip.Locator) ([]string, 
 	}
 
 	if allErrors != nil {
-		log.Printf("warning: some errors while formatting configs: %v\n", allErrors)
+		logging.Log.Warn("some errors while formatting configs", zap.Error(allErrors))
 	}
 
 	return formattedConfigs, configsByCountry, nil
@@ -289,13 +289,13 @@ func updateCacheAndFile(configs []string, configsCache *domain.SafeConfigsCache,
 
 		err := os.WriteFile(tmpPath, data, 0666)
 		if err != nil {
-			log.Println("failed to write temporary file:", err)
+			logging.Log.Info("failed to write temporary file", zap.Error(err))
 			return fmt.Errorf("failed to write temporary file: %w", err)
 		}
 
 		err = os.Rename(tmpPath, configsPath)
 		if err != nil {
-			log.Println("failed to replace configs file:", err)
+			logging.Log.Info("failed to replace configs file", zap.Error(err))
 			return fmt.Errorf("failed to replace configs file: %w", err)
 		}
 
@@ -308,7 +308,7 @@ func updateCacheAndFile(configs []string, configsCache *domain.SafeConfigsCache,
 func isUnique(config string, unique map[string]struct{}) (bool, error) {
 	parsedConfig, err := url.Parse(config)
 	if err != nil {
-		log.Printf("failed to parse dirty config. error: %v", err)
+		logging.Log.Info("failed to parse dirty config", zap.Error(err))
 		return false, fmt.Errorf("failed to parse dirty config. error: %v", err)
 	}
 

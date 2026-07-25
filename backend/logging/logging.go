@@ -2,29 +2,49 @@ package logging
 
 import (
 	"log"
+	"os"
 
-	"github.com/rom5n/whitelist-download/backend/config"
-	"github.com/rom5n/whitelist-download/backend/domain"
+	"go.uber.org/zap"
 )
 
-func Configure(cfg *config.Config) {
-	cfg.RLock()
-	path := cfg.LogsPath
-	cfg.RUnlock()
+var Log *zap.Logger
 
-	logFile := domain.GetFile(path)
+const LogPath = "app.log"
 
-	log.SetOutput(logFile)
-
-	resetFile(logFile, path)
+func Initialize() {
+	file := getFile(LogPath)
+	resetFile(file)
+	setLogger()
 }
 
-func resetFile(file *domain.SafeFile, name string) {
+func setLogger() {
+	cfg := zap.NewProductionConfig()
+	cfg.OutputPaths = []string{"stdout", LogPath}
+	cfg.ErrorOutputPaths = []string{"stderr", LogPath}
+
+	var err error
+	Log, err = cfg.Build()
+	if err != nil {
+		log.Fatalf("failed to initialize logger: %v", err)
+	}
+	defer Log.Sync()
+}
+
+func resetFile(file *os.File) {
 	if err := file.Truncate(0); err != nil {
-		log.Println("failed to truncate file:", name, "error:", err)
+		log.Println("failed to truncate log file:", LogPath, "error:", err)
 	}
 
 	if _, err := file.Seek(0, 0); err != nil {
-		log.Println("failed to seek file:", name, "error:", err)
+		log.Println("failed to seek log file:", LogPath, "error:", err)
 	}
+}
+
+func getFile(filename string) *os.File {
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		Log.Fatal("error opening file", zap.String("filename", filename), zap.Error(err))
+	}
+
+	return file
 }

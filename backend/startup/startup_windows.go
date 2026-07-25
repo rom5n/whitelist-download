@@ -12,9 +12,8 @@ import (
 
 func Add(cfg *config.Config) {
 	err := func() error {
-		cfg.RLock()
-		appName := cfg.AppName
-		cfg.RUnlock()
+		cfgSafe := cfg.RetrieveSafe(config.AppName)
+		appName := cfgSafe.AppName
 
 		exePath, err := os.Executable()
 		if err != nil {

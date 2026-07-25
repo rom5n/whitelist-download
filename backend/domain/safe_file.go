@@ -1,7 +1,8 @@
 package domain
 
 import (
-	"log"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 	"os"
 	"sync"
 )
@@ -57,7 +58,7 @@ func (f *SafeFile) WriteString(s string) (int, error) {
 func GetFile(filename string) *SafeFile {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
-		log.Fatalf("error opening %v file: %v\n", filename, err)
+		logging.Log.Fatal("error opening file", zap.String("filename", filename), zap.Error(err))
 	}
 
 	return &SafeFile{file: file, Name: filename}

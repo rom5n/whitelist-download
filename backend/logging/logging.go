@@ -27,7 +27,6 @@ func setLogger() {
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
-	defer Log.Sync()
 }
 
 func resetFile(file *os.File) {

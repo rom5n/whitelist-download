@@ -187,7 +187,6 @@ func getSubscriptionLink(cfg *config.Config, ip, port string) func(w http.Respon
 		subLink := fmt.Sprintf("%v://%v:%v%v", "http", ip, port, subPath+"/15")
 
 		w.Write([]byte(subLink))
-		return
 	}
 }
 

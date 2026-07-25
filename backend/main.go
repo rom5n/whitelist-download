@@ -18,6 +18,8 @@ import (
 func main() {
 	time.Sleep(10 * time.Second)
 	logging.Initialize()
+	defer logging.Log.Sync()
+
 	setExecutableDir()
 
 	cfg := config.Load()

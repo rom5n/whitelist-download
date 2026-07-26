@@ -37,7 +37,7 @@ type Config struct {
 	UpdateInterval    int      `json:"update_interval_minutes"`  // Interval in minutes for configs auto update
 	Sources           []string `json:"sources"`                  // Configs sources
 	ForcedIP          string   `json:"forced_ip"`                // Forced IP if your system identified invalid ip address (often happens on VPS servers)
-	WorkingCheckLevel int      `json:"working_check_level"`      // 1 or 2. 1 - ping test, 2 - xray core test
+	WorkingCheckLevel int      `json:"working_check_level"`      // 1 or 2. 1 - ping test, 2 - sing box core test
 }
 
 // defaultCfg Default app config
@@ -53,9 +53,11 @@ var defaultCfg = Config{
 	WorkingCheckLevel: 1,
 	Sources: []string{
 		"https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt",
+		"https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
 		"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
 		"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile-2.txt",
 		"https://raw.githubusercontent.com/whoahaow/rjsxrd/refs/heads/main/githubmirror/bypass/bypass-all.txt",
+		"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-CIDR-RU-all.txt",
 	},
 }
 

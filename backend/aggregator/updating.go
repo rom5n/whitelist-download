@@ -5,13 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/goccy/go-json"
+
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 	"github.com/rom5n/whitelist-download/backend/logging"
-	"github.com/xtls/xray-core/core"
-	"github.com/xtls/xray-core/infra/conf/serial"
+	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/include"
+	"github.com/sagernet/sing-box/option"
 	"go.uber.org/zap"
+
 	"net"
 	"net/http"
 	"net/url"
@@ -20,19 +22,13 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	stdnet "net"
-
-	xnet "github.com/xtls/xray-core/common/net"
-
-	_ "github.com/xtls/xray-core/main/distro/all"
 )
 
 const (
 	pingTimeout   = 2 * time.Second
-	xrayTimeout   = 7 * time.Second
+	urlTimeout    = 7 * time.Second
 	sourceTimeout = 5 * time.Second
-	updateTimeout = 30 * time.Second
+	updateTimeout = 5 * time.Minute
 	maxWorkers    = 150
 )
 
@@ -42,12 +38,8 @@ type UpdateResult struct {
 	NotWorking       int
 	ConfigsByCountry map[string]int
 }
-type xrayServerCtxKey struct{}
 
-var (
-	targetDest   xnet.Destination
-	sharedClient *http.Client
-)
+var portPool chan int
 
 func UpdateConfigs(configsPath string, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
 	if len(sources) == 0 {
@@ -93,7 +85,7 @@ func UpdateConfigs(configsPath string, configsCache *domain.SafeConfigsCache, so
 	return result, nil
 }
 
-// isWorking Has 2 levels of verification: 1 - ping test (fast), 2 - xray check (50x slower, about 500ms, but a much better)
+// isWorking Has 2 levels of verification: 1 - ping test (fast), 2 - sing box check (50x slower, about 500ms, but a much better)
 func isWorking(config string, level int) (bool, error) {
 	if level < 2 {
 		parsedConfig, err := url.Parse(config)
@@ -103,7 +95,7 @@ func isWorking(config string, level int) (bool, error) {
 		return pingCheck(parsedConfig.Host, pingTimeout), nil
 	}
 
-	return xrayCheck(config, xrayTimeout), nil
+	return singBoxCheck(config, urlTimeout), nil
 }
 
 func pingCheck(link string, timeout time.Duration) bool {
@@ -120,49 +112,62 @@ func pingCheck(link string, timeout time.Duration) bool {
 	return false
 }
 
+var singBoxMutex sync.Mutex
+
 func init() {
-	targetDest, _ = xnet.ParseDestination("tcp:cp.cloudflare.com:80")
-	sharedClient = &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: func(ctx context.Context, network, addr string) (stdnet.Conn, error) {
-				srv := ctx.Value(xrayServerCtxKey{}).(*core.Instance)
-				return core.Dial(ctx, srv, targetDest)
-			},
-		},
+	portPool = make(chan int, maxWorkers)
+	for i := 0; i < maxWorkers; i++ {
+		portPool <- 20000 + i
 	}
 }
 
-func xrayCheck(config string, timeout time.Duration) bool {
-	xrayConfig, err := parseToXrayConfig(config)
+func singBoxCheck(config string, timeout time.Duration) bool {
+	localPort := <-portPool
+	defer func() { portPool <- localPort }()
+
+	opts, err := buildSingBoxOptions(config, localPort)
 	if err != nil {
-		logging.Log.Error("xray parse error", zap.Error(err))
+		logging.Log.Error("sing-box parse error", zap.Error(err))
 		return false
 	}
 
-	server, err := core.New(xrayConfig)
+	singBoxMutex.Lock()
+	ctx := include.Context(context.Background())
+	instance, err := box.New(box.Options{
+		Context: ctx,
+		Options: opts,
+	})
+	singBoxMutex.Unlock()
+	
 	if err != nil {
-		logging.Log.Error("xray core instance error", zap.Error(err))
+		logging.Log.Error("sing-box core instance error", zap.Error(err))
 		return false
 	}
 
-	if err := server.Start(); err != nil {
-		logging.Log.Error("xray server start error", zap.Error(err))
+	if err := instance.Start(); err != nil {
+		logging.Log.Error("sing-box start error", zap.Error(err))
 		return false
 	}
-	defer server.Close()
+	defer instance.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	ctxWithServer := context.WithValue(ctx, xrayServerCtxKey{}, server)
+	proxyUrl, _ := url.Parse(fmt.Sprintf("socks5://127.0.0.1:%d", localPort))
+	client := &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			Proxy:             http.ProxyURL(proxyUrl),
+			DisableKeepAlives: true,
+		},
+	}
 
-	req, err := http.NewRequestWithContext(ctxWithServer, http.MethodGet, "http://cp.cloudflare.com/generate_204", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://cp.cloudflare.com/generate_204", nil)
 	if err != nil {
 		return false
 	}
 
-	resp, err := sharedClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}
@@ -171,25 +176,10 @@ func xrayCheck(config string, timeout time.Duration) bool {
 	return resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK
 }
 
-func parseToXrayConfig(input string) (*core.Config, error) {
-	jsonConfig, err := convertVlessToXrayJSON(input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert link to json: %w", err)
-	}
-
-	confConfig, err := serial.DecodeJSONConfig(strings.NewReader(jsonConfig))
-	if err != nil {
-		return nil, err
-	}
-
-	return confConfig.Build()
-}
-
-// convertVlessToXrayJSON динамически собирает JSON-конфиг Xray на основе параметров vless:// ссылки
-func convertVlessToXrayJSON(link string) (string, error) {
+func buildSingBoxOptions(link string, localPort int) (option.Options, error) {
 	u, err := url.Parse(link)
 	if err != nil || u.Scheme != "vless" {
-		return "", errors.New("invalid or unsupported link format (only vless is supported in this parser)")
+		return option.Options{}, errors.New("invalid or unsupported link format (only vless is supported)")
 	}
 
 	port, err := strconv.Atoi(u.Port())
@@ -199,87 +189,78 @@ func convertVlessToXrayJSON(link string) (string, error) {
 
 	q := u.Query()
 	netType := q.Get("type")
-	if netType == "" {
-		netType = "tcp"
-	}
 	security := q.Get("security")
-	if security == "" {
-		security = "none"
-	}
 
-	streamSettings := map[string]any{
-		"network":  netType,
-		"security": security,
+	vless := option.VLESSOutboundOptions{
+		ServerOptions: option.ServerOptions{
+			Server:     u.Hostname(),
+			ServerPort: uint16(port),
+		},
+		UUID: u.User.Username(),
+		Flow: q.Get("flow"),
 	}
 
 	if security == "reality" {
-		streamSettings["realitySettings"] = map[string]any{
-			"serverName":  q.Get("sni"),
-			"publicKey":   q.Get("pbk"),
-			"fingerprint": q.Get("fp"),
-			"shortId":     q.Get("sid"),
-			"spiderX":     q.Get("spx"),
+		vless.TLS = &option.OutboundTLSOptions{
+			Enabled:    true,
+			ServerName: q.Get("sni"),
+			Reality: &option.OutboundRealityOptions{
+				Enabled:   true,
+				PublicKey: q.Get("pbk"),
+				ShortID:   q.Get("sid"),
+			},
+			UTLS: &option.OutboundUTLSOptions{
+				Enabled:     true,
+				Fingerprint: q.Get("fp"),
+			},
 		}
 	} else if security == "tls" {
-		streamSettings["tlsSettings"] = map[string]any{
-			"serverName":    q.Get("sni"),
-			"fingerprint":   q.Get("fp"),
-			"allowInsecure": false,
+		vless.TLS = &option.OutboundTLSOptions{
+			Enabled:    true,
+			ServerName: q.Get("sni"),
+			UTLS: &option.OutboundUTLSOptions{
+				Enabled:     true,
+				Fingerprint: q.Get("fp"),
+			},
 		}
 	}
 
 	if netType == "ws" {
-		streamSettings["wsSettings"] = map[string]any{
-			"path": q.Get("path"),
-			"headers": map[string]any{
-				"Host": q.Get("host"),
+		vless.Transport = &option.V2RayTransportOptions{
+			Type: "ws",
+			WebsocketOptions: option.V2RayWebsocketOptions{
+				Path: q.Get("path"),
 			},
 		}
 	} else if netType == "grpc" {
-		streamSettings["grpcSettings"] = map[string]any{
-			"serviceName": q.Get("serviceName"),
-			"multiMode":   q.Get("mode") == "multi",
-		}
-	} else if netType == "tcp" && q.Get("headerType") == "http" {
-		streamSettings["tcpSettings"] = map[string]any{
-			"header": map[string]any{
-				"type": "http",
-				"request": map[string]any{
-					"path": []string{q.Get("path")},
-					"headers": map[string]any{
-						"Host": []string{q.Get("host")},
-					},
-				},
+		vless.Transport = &option.V2RayTransportOptions{
+			Type: "grpc",
+			GRPCOptions: option.V2RayGRPCOptions{
+				ServiceName: q.Get("serviceName"),
 			},
 		}
 	}
 
-	config := map[string]any{
-		"outbounds": []any{
-			map[string]any{
-				"protocol": "vless",
-				"settings": map[string]any{
-					"vnext": []any{
-						map[string]any{
-							"address": u.Hostname(),
-							"port":    port,
-							"users": []any{
-								map[string]any{
-									"id":         u.User.Username(),
-									"encryption": "none",
-									"flow":       q.Get("flow"),
-								},
-							},
-						},
+	return option.Options{
+		Inbounds: []option.Inbound{
+			{
+				Type: "socks",
+				Tag:  "in-socks",
+				Options: &option.SocksInboundOptions{
+					ListenOptions: option.ListenOptions{
+						ListenPort: uint16(localPort),
 					},
 				},
-				"streamSettings": streamSettings,
 			},
 		},
-	}
-
-	b, err := json.Marshal(config)
-	return string(b), err
+		Outbounds: []option.Outbound{
+			{
+				Type:                 "vless",
+				Tag:                  "proxy",
+				Options:              &vless,
+			},
+		},
+	}, nil
 }
 
 // getConfigs fetching and returning configs from set sources, filtering copies
@@ -347,7 +328,11 @@ func fetchConfigs(ctx context.Context, client *http.Client, source string) ([]st
 	var results []string
 	scan := bufio.NewScanner(resp.Body)
 	for scan.Scan() {
-		results = append(results, strings.TrimSpace(scan.Text()))
+		text := scan.Text()
+		if _, err = url.Parse(text); err != nil {
+			continue
+		}
+		results = append(results, strings.TrimSpace(text))
 	}
 
 	if err = scan.Err(); err != nil {

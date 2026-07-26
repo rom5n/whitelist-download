@@ -29,7 +29,7 @@ func StartPollingConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCac
 		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry}
 		statistics.Set(update)
 
-		logging.Log.Info("update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking))
+		logging.Log.Info("update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking), zap.Int("Working level", workingCheckLevel))
 
 		logging.Log.Info("configs updated successfully")
 		time.Sleep(time.Duration(timeout) * time.Minute)

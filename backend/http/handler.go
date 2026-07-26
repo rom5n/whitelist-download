@@ -2,6 +2,7 @@ package http
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"github.com/rom5n/whitelist-download/backend/logging"
 	"go.uber.org/zap"
 	"net/url"
+	"sort"
 	"unicode"
 	"unicode/utf8"
 
@@ -92,6 +94,148 @@ func subscriptionHandler(cfg *config.Config, configsCache *domain.SafeConfigsCac
 	}
 }
 
+type ConfigsResponse struct {
+	Configs []string `json:"configs"`
+}
+
+func getConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+		query := r.URL.Query()
+
+		limit := 0
+		if l := query.Get("limit"); l != "" {
+			limit, _ = strconv.Atoi(l)
+		}
+
+		offset := 1
+		if o := query.Get("offset"); o != "" {
+			offset, _ = strconv.Atoi(o)
+		}
+		if offset < 1 {
+			offset = 1
+		}
+
+		country := parseCountryName(query.Get("country"))
+
+		configsPath := cfg.RetrieveSafe(config.ConfigsPath).ConfigsPath
+
+		var configs []string
+
+		// Try from cache first
+		cacheMap := configsCache.Get()
+		if len(cacheMap) > 0 {
+			configs = extractConfigsFromMap(cacheMap, country, offset, limit)
+		} else {
+			// Cache missed, load from file
+			logging.Log.Warn("cache missed. Loading configs from file", zap.String("filename", configsPath))
+			configsFile := domain.GetFile(configsPath)
+			if configsFile != nil {
+				defer configsFile.Close()
+				configs = extractConfigsFromFile(configsFile, country, offset, limit)
+			}
+		}
+
+		if configs == nil {
+			configs = []string{}
+		}
+
+		resp := ConfigsResponse{Configs: configs}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			logging.Log.Error("failed to encode getConfigs response", zap.Error(err))
+		}
+
+		logging.Log.Info("configs sent to frontend", zap.Int("amount", len(configs)), zap.Int("offset", offset), zap.Int("limit", limit), zap.String("country", country))
+	}
+}
+
+func extractConfigsFromMap(cacheMap map[string][]string, country string, offset, limit int) []string {
+	var results []string
+	skipped := 0
+
+	if country != "" {
+		for _, text := range cacheMap[country] {
+			if skipped < offset-1 {
+				skipped++
+				continue
+			}
+			results = append(results, text)
+			if limit > 0 && len(results) >= limit {
+				break
+			}
+		}
+		return results
+	}
+
+	keys := make([]string, 0, len(cacheMap))
+	for k := range cacheMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		configs := cacheMap[k]
+		for _, text := range configs {
+			if skipped < offset-1 {
+				skipped++
+				continue
+			}
+			results = append(results, text)
+			if limit > 0 && len(results) >= limit {
+				return results
+			}
+		}
+	}
+
+	return results
+}
+
+func extractConfigsFromFile(configsFile *domain.SafeFile, country string, offset, limit int) []string {
+	var results []string
+	scan := bufio.NewScanner(configsFile)
+	currentLine := 1
+
+	for scan.Scan() {
+		text := scan.Text()
+		if country != "" {
+			urlParts, err := url.Parse(text)
+			if err == nil {
+				fragment := urlParts.Fragment
+				firstSpace := strings.Index(fragment, " ")
+				dashIndex := strings.Index(fragment, " — ")
+				if firstSpace != -1 && dashIndex != -1 && dashIndex > firstSpace {
+					configCountry := fragment[firstSpace+1 : dashIndex]
+					if configCountry != country {
+						continue
+					}
+				} else {
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+
+		if currentLine < offset {
+			currentLine++
+			continue
+		}
+
+		results = append(results, text)
+
+		if limit > 0 && len(results) >= limit {
+			break
+		}
+		currentLine++
+	}
+
+	if err := scan.Err(); err != nil {
+		logging.Log.Error("failed to read config file", zap.Error(err))
+	}
+	return results
+}
+
 func sendConfigsFromCache(configsCache *domain.SafeConfigsCache, encoder io.WriteCloser, offset, limit int, country string) (int, error) {
 	if country != "" {
 		return configsWithCountry(configsCache, encoder, limit, offset, country)
@@ -130,7 +274,17 @@ func anyConfigs(configsCache *domain.SafeConfigsCache, encoder io.WriteCloser, l
 	addedConfigs := 0
 	skippedConfigs := 0
 
-	for _, configs := range configsCache.Get() {
+	cacheMap := configsCache.Get()
+
+	keys := make([]string, 0, len(cacheMap))
+	for k := range cacheMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		configs := cacheMap[k]
+
 		if limit > 0 && addedConfigs >= limit {
 			break
 		}
@@ -151,6 +305,7 @@ func anyConfigs(configsCache *domain.SafeConfigsCache, encoder io.WriteCloser, l
 			}
 		}
 	}
+
 	if addedConfigs == 0 && skippedConfigs != 0 {
 		return 0, errors.New("EOF")
 	}
@@ -169,11 +324,19 @@ func sendConfigsFromFile(configsFile *domain.SafeFile, encoder io.WriteCloser, o
 			logging.Log.Error("failed to parse config url while sending from file", zap.String("url", scan.Text()), zap.Error(err))
 			continue
 		}
-		parts := strings.Split(urlParts.Fragment, " ")
-
-		configCountry := parts[1]
-		if configCountry != country && country != "" {
-			continue
+		
+		if country != "" {
+			fragment := urlParts.Fragment
+			firstSpace := strings.Index(fragment, " ")
+			dashIndex := strings.Index(fragment, " — ")
+			if firstSpace != -1 && dashIndex != -1 && dashIndex > firstSpace {
+				configCountry := fragment[firstSpace+1 : dashIndex]
+				if configCountry != country {
+					continue
+				}
+			} else {
+				continue
+			}
 		}
 
 		if currentLine < offset {
@@ -206,31 +369,47 @@ func retrieveParams(r *http.Request) (int, int, string, error) {
 	country := ""
 
 	if path != "" {
-		var err error
 		parts := strings.Split(path, "/")
-		data := strings.Split(path, "-")
 		if len(parts) > 1 {
 			country = parseCountryName(parts[0])
-			data = strings.Split(parts[1], "-")
-		}
-
-		limit, err = strconv.Atoi(data[0])
-		if err != nil {
-			logging.Log.Error("invalid limit for requested configs")
-			return 0, 0, "", fmt.Errorf("invalid limit")
-		}
-
-		if len(data) == 2 {
-			offset, err = strconv.Atoi(data[0])
-			if err != nil {
-				logging.Log.Error("invalid offset foe requested configs")
-				return 0, 0, "", fmt.Errorf("invalid offset for requested configs")
+			data := strings.Split(parts[1], "-")
+			var err error
+			if len(data) == 2 {
+				offset, err = strconv.Atoi(data[0])
+				if err == nil {
+					limit, err = strconv.Atoi(data[1])
+				}
+			} else {
+				limit, err = strconv.Atoi(data[0])
 			}
-
-			limit, err = strconv.Atoi(data[1])
 			if err != nil {
-				logging.Log.Error("invalid limit for requested configs")
-				return 0, 0, "", fmt.Errorf("invalid limit for requested configs")
+				return 0, 0, "", fmt.Errorf("invalid offset or limit")
+			}
+		} else {
+			data := strings.Split(parts[0], "-")
+			isNumber := false
+			if len(data) > 0 {
+				_, err := strconv.Atoi(data[0])
+				if err == nil {
+					isNumber = true
+				}
+			}
+			
+			if isNumber {
+				var err error
+				if len(data) == 2 {
+					offset, err = strconv.Atoi(data[0])
+					if err == nil {
+						limit, err = strconv.Atoi(data[1])
+					}
+				} else {
+					limit, err = strconv.Atoi(data[0])
+				}
+				if err != nil {
+					return 0, 0, "", fmt.Errorf("invalid offset or limit")
+				}
+			} else {
+				country = parseCountryName(parts[0])
 			}
 		}
 	}
@@ -324,11 +503,12 @@ func setConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func restart() func(w http.ResponseWriter, r *http.Request) {
+func restart(cancel context.CancelFunc) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		logging.Log.Info("restart called")
 		if runtime.GOOS == "linux" {
-			os.Exit(0)
+			cancel()
+			return
 		}
 
 		exePath, err := os.Executable()
@@ -348,11 +528,11 @@ func restart() func(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		os.Exit(0)
+		cancel()
 	}
 }
 
-func updateConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) func(w http.ResponseWriter, r *http.Request) {
+func updateConfigs(ctx context.Context, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
@@ -361,7 +541,7 @@ func updateConfigs(cfg *config.Config, configsCache *domain.SafeConfigsCache, st
 		sources := cfgSafe.Sources
 		workingCheckLevel := cfgSafe.WorkingCheckLevel
 
-		result, err := aggregator.UpdateConfigs(configsPath, configsCache, sources, locator, workingCheckLevel)
+		result, err := aggregator.UpdateConfigs(ctx, configsPath, configsCache, sources, locator, workingCheckLevel)
 		if err != nil {
 			logging.Log.Error("failed to force update configs", zap.Error(err))
 			http.Error(w, "failed to force update configs", http.StatusInternalServerError)

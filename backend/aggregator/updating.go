@@ -41,12 +41,12 @@ type UpdateResult struct {
 
 var portPool chan int
 
-func UpdateConfigs(configsPath string, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
+func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
 	if len(sources) == 0 {
 		return nil, errors.New("no sources provided")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
 	logging.Log.Info("getting configs")
@@ -56,13 +56,13 @@ func UpdateConfigs(configsPath string, configsCache *domain.SafeConfigsCache, so
 	}
 
 	logging.Log.Info("checking configs for availability")
-	workingConfigs, err := filterWorkingConfigs(configs, level)
+	workingConfigs, err := filterWorkingConfigs(ctx, configs, level)
 	if err != nil {
 		return nil, fmt.Errorf("failed to filter working configs: %w", err)
 	}
 
 	logging.Log.Info("formatting configs")
-	formattedConfigs, configsByCountry, err := formatConfigs(workingConfigs, locator)
+	formattedConfigs, configsByCountry, err := formatConfigs(ctx, workingConfigs, locator)
 	if err != nil {
 		return nil, fmt.Errorf("failed to format configs: %w", err)
 	}
@@ -343,7 +343,7 @@ func fetchConfigs(ctx context.Context, client *http.Client, source string) ([]st
 }
 
 // filterWorkingConfigs returns only working configs
-func filterWorkingConfigs(uniqueConfigs []string, level int) ([]string, error) {
+func filterWorkingConfigs(ctx context.Context, uniqueConfigs []string, level int) ([]string, error) {
 	workingConfigs := make([]string, 0, len(uniqueConfigs))
 	workersCh := make(chan struct{}, maxWorkers)
 
@@ -357,6 +357,10 @@ func filterWorkingConfigs(uniqueConfigs []string, level int) ([]string, error) {
 
 		go func() {
 			defer wg.Done()
+
+			if ctx.Err() != nil {
+				return
+			}
 
 			workersCh <- struct{}{}
 			defer func() {
@@ -389,7 +393,7 @@ func filterWorkingConfigs(uniqueConfigs []string, level int) ([]string, error) {
 	return workingConfigs, nil
 }
 
-func formatConfigs(workingConfigs []string, locator *geo_ip.Locator) ([]string, map[string]int, error) {
+func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip.Locator) ([]string, map[string]int, error) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var successCount int
@@ -404,6 +408,11 @@ func formatConfigs(workingConfigs []string, locator *geo_ip.Locator) ([]string, 
 
 		go func() {
 			defer wg.Done()
+			
+			if ctx.Err() != nil {
+				return
+			}
+			
 			workersCh <- struct{}{}
 			defer func() {
 				<-workersCh

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"go.uber.org/zap"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/rom5n/whitelist-download/backend/aggregator"
@@ -17,6 +21,7 @@ import (
 
 func main() {
 	time.Sleep(10 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	logging.Initialize()
 	defer logging.Log.Sync()
 
@@ -29,9 +34,28 @@ func main() {
 	statistics := &domain.Statistics{StartedAt: time.Now().Unix()}
 	locator := geo_ip.InitLocator()
 
-	go aggregator.StartPollingConfigs(cfg, configsCache, statistics, locator)
+	go handleShutdown(cancel)
 
-	http.Start(cfg, configsCache, statistics, locator)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go aggregator.StartPollingConfigs(ctx, &wg, cfg, configsCache, statistics, locator)
+
+	wg.Add(1)
+	http.Start(ctx, cancel, &wg, cfg, configsCache, statistics, locator)
+
+	logging.Log.Info("waiting for tasks to finish...")
+	wg.Wait()
+	logging.Log.Info("graceful shutdown completed")
+}
+
+// handleShutdown Gracefully handles shutdown
+func handleShutdown(cancel context.CancelFunc) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	sig := <-c
+	logging.Log.Info("received signal, initiating graceful shutdown", zap.String("signal", sig.String()))
+	cancel()
 }
 
 func setExecutableDir() {

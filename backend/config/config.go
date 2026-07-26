@@ -111,6 +111,7 @@ func (config *Config) Set(new *Config) error {
 	config.SubscriptionPath = new.SubscriptionPath
 	config.UpdateInterval = new.UpdateInterval
 	config.ForcedIP = new.ForcedIP
+	config.WorkingCheckLevel = new.WorkingCheckLevel
 
 	if err := config.Save(); err != nil {
 		return fmt.Errorf("save config: %w", err)

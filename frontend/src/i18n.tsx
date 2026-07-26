@@ -10,6 +10,7 @@ const translations: Record<Language, Record<string, string>> = {
     'header.title': 'Whitelist Download',
     'header.subtitle': 'Open-source configs for whitelist bypass',
     'header.github': 'GitHub',
+    'header.donate': 'Donate',
 
     // Subscription card
     'sub.title': 'Subscription',
@@ -48,7 +49,9 @@ const translations: Record<Language, Record<string, string>> = {
     'logs.error': 'Failed to load logs',
 
     // Settings modal
-    'settings.title': 'System Settings',
+    'settings.title': 'Settings',
+    'settings.subtitle': 'Configure your whitelist download server parameters.',
+    'settings.loading': 'Loading settings...',
     'settings.general': 'General',
     'settings.network': 'Network',
     'settings.files': 'Files',
@@ -63,15 +66,46 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.configsPath': 'Configs Path',
     'settings.logsPath': 'Logs Path',
     'settings.interval': 'Update Interval (min)',
-    'settings.sourcePlaceholder': 'Source URL',
-    'settings.addSource': 'Add',
+    'settings.sourcePlaceholder': 'Enter URL...',
+    'settings.addSource': 'Add Source',
     'settings.removeSource': 'Remove',
-    'settings.save': 'Save Changes',
+    'settings.levelNormalDesc': 'Checking configurations using server ping [Fast]',
+    'settings.levelUltraDesc': 'Checking configurations using sing-box core, better than ping, but filters out more configurations that might have been working [Slow]',
+    'settings.save': 'Save',
     'settings.saving': 'Saving...',
     'settings.saved': 'Saved!',
     'settings.saveError': 'Error',
     'settings.restartRequired': 'Restart required',
     'settings.close': 'Close',
+    'settings.updateConfigs': 'Update Configurations',
+    'settings.restartServer': 'Restart Server',
+    'settings.workingLevel': 'Working Check Level',
+    'settings.levelNormal': 'Normal',
+    'settings.levelUltra': 'Ultra',
+    'settings.unsavedChanges': 'Unsaved changes',
+    'sub.noLimit': 'No limit',
+
+    // Sidebar & Details
+    'sidebar.filter': 'Filter by Country',
+    'sidebar.all': 'All',
+    'sidebar.allRegions': 'All Countries',
+    'sidebar.aggregated': 'Aggregated subscription',
+    'sidebar.unknown': 'Unknown',
+    'sidebar.loading': 'Loading...',
+    
+    'details.globalSub': 'Global Subscription',
+    'details.sub': 'Subscription',
+    'details.scanOrCopy': 'Scan the QR code or copy the link to import into your.',
+    'details.paginationConfig': 'Pagination Configuration',
+    'details.limit': 'Limit',
+    'details.adjustSliders': '',
+    'details.unknownLocation': 'Unknown Location',
+    'details.config': 'Config',
+    'details.protocol': 'Protocol',
+    'details.port': 'Port',
+    'details.uuid': 'UUID',
+    'details.parameters': 'Parameters',
+    'details.parseError': 'Failed to parse configuration.',
 
     // Theme
     'theme.dark': 'Dark',
@@ -87,6 +121,7 @@ const translations: Record<Language, Record<string, string>> = {
     'header.title': 'Whitelist Download',
     'header.subtitle': 'Open-source конфиги для обхода белых списков',
     'header.github': 'GitHub',
+    'header.donate': 'Пожертвовать',
 
     // Subscription card
     'sub.title': 'Подключение',
@@ -125,7 +160,9 @@ const translations: Record<Language, Record<string, string>> = {
     'logs.error': 'Не удалось загрузить логи',
 
     // Settings modal
-    'settings.title': 'Системные настройки',
+    'settings.title': 'Настройки',
+    'settings.subtitle': 'Настройте параметры вашего сервера.',
+    'settings.loading': 'Загрузка настроек...',
     'settings.general': 'Основные',
     'settings.network': 'Сеть',
     'settings.files': 'Файлы',
@@ -140,15 +177,46 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.configsPath': 'Путь к конфигам',
     'settings.logsPath': 'Путь к логам',
     'settings.interval': 'Интервал обновления (мин)',
-    'settings.sourcePlaceholder': 'URL источника',
-    'settings.addSource': 'Добавить',
+    'settings.sourcePlaceholder': 'Введите ссылку...',
+    'settings.addSource': 'Добавить источник',
     'settings.removeSource': 'Удалить',
-    'settings.save': 'Сохранить изменения',
+    'settings.levelNormalDesc': 'Проверка конфигураций с помощью пинга сервера [Быстро]',
+    'settings.levelUltraDesc': 'Проверка конфигураций с помощью ядра sing-box, лучше пинга, но отсеивает больше конфигураций, которые могли быть рабочими [Медленно]',
+    'settings.save': 'Сохранить',
     'settings.saving': 'Сохранение...',
     'settings.saved': 'Сохранено!',
     'settings.saveError': 'Ошибка',
     'settings.restartRequired': 'Требуется рестарт',
     'settings.close': 'Закрыть',
+    'settings.updateConfigs': 'Обновить конфигурации',
+    'settings.restartServer': 'Перезагрузить сервер',
+    'settings.workingLevel': 'Уровень проверки конфигов',
+    'settings.levelNormal': 'Обычный',
+    'settings.levelUltra': 'Ультра',
+    'settings.unsavedChanges': 'Не сохранено',
+    'sub.noLimit': 'Без лимита',
+
+    // Sidebar & Details
+    'sidebar.filter': 'Фильтр по странам',
+    'sidebar.all': 'Все',
+    'sidebar.allRegions': 'Все страны',
+    'sidebar.aggregated': 'Объединенная подписка',
+    'sidebar.unknown': 'Неизвестно',
+    'sidebar.loading': 'Загрузка...',
+    
+    'details.globalSub': 'Глобальная подписка',
+    'details.sub': 'Подписка',
+    'details.scanOrCopy': 'Отсканируйте QR-код или скопируйте ссылку для импорта в клиент.',
+    'details.paginationConfig': 'Настройка пагинации',
+    'details.limit': 'Лимит',
+    'details.adjustSliders': '',
+    'details.unknownLocation': 'Неизвестная локация',
+    'details.config': 'Конфиг',
+    'details.protocol': 'Протокол',
+    'details.port': 'Порт',
+    'details.uuid': 'UUID',
+    'details.parameters': 'Параметры',
+    'details.parseError': 'Не удалось распознать конфигурацию.',
 
     // Theme
     'theme.dark': 'Тёмная',
@@ -202,6 +270,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
  * Hook to access the translation function and current language.
  * Must be used within an I18nProvider.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useTranslation() {
   const ctx = useContext(I18nContext);
   if (!ctx) throw new Error('useTranslation must be used within I18nProvider');

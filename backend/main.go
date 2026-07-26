@@ -22,10 +22,10 @@ import (
 func main() {
 	time.Sleep(10 * time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
+	setExecutableDir()
+	
 	logging.Initialize()
 	defer logging.Log.Sync()
-
-	setExecutableDir()
 
 	cfg := config.Load()
 	startup.Add(cfg)

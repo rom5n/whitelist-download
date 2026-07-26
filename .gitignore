@@ -7,7 +7,7 @@ wl-*
 
 node_modules
 *.zed
-
+wl-download
 *.zip
 whitelist-download-windows/wl-download.exe
 *.exe

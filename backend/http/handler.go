@@ -324,7 +324,7 @@ func sendConfigsFromFile(configsFile *domain.SafeFile, encoder io.WriteCloser, o
 			logging.Log.Error("failed to parse config url while sending from file", zap.String("url", scan.Text()), zap.Error(err))
 			continue
 		}
-		
+
 		if country != "" {
 			fragment := urlParts.Fragment
 			firstSpace := strings.Index(fragment, " ")
@@ -394,7 +394,7 @@ func retrieveParams(r *http.Request) (int, int, string, error) {
 					isNumber = true
 				}
 			}
-			
+
 			if isNumber {
 				var err error
 				if len(data) == 2 {
@@ -453,7 +453,7 @@ func getSubscriptionLink(cfg *config.Config, ip, port string) func(w http.Respon
 			ip = forcedIP
 		}
 
-		subLink := fmt.Sprintf("%v://%v:%v%v", "http", ip, port, subPath+"/15")
+		subLink := fmt.Sprintf("%v://%v:%v%v", "http", ip, port, subPath)
 
 		w.Write([]byte(subLink))
 	}
@@ -465,9 +465,11 @@ func getStatistics(statistics *domain.Statistics) func(w http.ResponseWriter, r 
 
 		err := json.NewEncoder(w).Encode(statistics)
 		if err != nil {
+			logging.Log.Error("failed to get statistics", zap.Error(err))
 			http.Error(w, "failed to get statistics", http.StatusInternalServerError)
 			return
 		}
+		logging.Log.Info("statistics sent")
 	}
 }
 
@@ -477,9 +479,11 @@ func getConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) 
 
 		err := json.NewEncoder(w).Encode(cfg)
 		if err != nil {
+			logging.Log.Error("failed to get config", zap.Error(err))
 			http.Error(w, "failed to get config", http.StatusInternalServerError)
 			return
 		}
+		logging.Log.Info("config sent")
 	}
 }
 
@@ -489,16 +493,19 @@ func setConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) 
 
 		newConfig := &config.Config{}
 		if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
+			logging.Log.Error("failed to decode config", zap.Error(err))
 			http.Error(w, "failed to decode config", http.StatusInternalServerError)
 			return
 		}
 		defer r.Body.Close()
 
 		if err := cfg.Set(newConfig); err != nil {
+			logging.Log.Error("failed to set config", zap.Error(err))
 			http.Error(w, "failed to set config", http.StatusInternalServerError)
 			return
 		}
 
+		logging.Log.Info("app config updated")
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -551,7 +558,7 @@ func updateConfigs(ctx context.Context, cfg *config.Config, configsCache *domain
 		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry}
 		statistics.Set(update)
 
-		logging.Log.Info("force update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking))
+		logging.Log.Info("force update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking), zap.Int("working check leve", workingCheckLevel))
 
 		w.WriteHeader(http.StatusOK)
 	}
@@ -567,10 +574,12 @@ func getLogs(path string) func(w http.ResponseWriter, r *http.Request) {
 		writer := bufio.NewWriter(w)
 		reader := bufio.NewReader(file)
 		if _, err := writer.ReadFrom(reader); err != nil {
+			logging.Log.Error("failed to read logs", zap.Error(err))
 			http.Error(w, "failed to read logs", http.StatusInternalServerError)
 			return
 		}
 		if err := writer.Flush(); err != nil {
+			logging.Log.Error("failed to flush logs", zap.Error(err))
 			http.Error(w, "failed to flush logs", http.StatusInternalServerError)
 			return
 		}

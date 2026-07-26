@@ -471,9 +471,22 @@ func SortConfigs(formattedConfigs []string) map[string][]string {
 			logging.Log.Error("failed to parse config url while sorting", zap.String("url", config), zap.Error(err))
 			continue
 		}
-		parts := strings.Split(urlParts.Fragment, " ")
-		country := parts[1]
-		sortedConfigs[country] = append(sortedConfigs[country], config)
+		
+		fragment := urlParts.Fragment
+		firstSpace := strings.Index(fragment, " ")
+		dashIndex := strings.Index(fragment, " — ")
+		
+		if firstSpace != -1 && dashIndex != -1 && dashIndex > firstSpace {
+			country := fragment[firstSpace+1 : dashIndex]
+			sortedConfigs[country] = append(sortedConfigs[country], config)
+		} else {
+			// Fallback in case of unexpected format
+			parts := strings.Split(fragment, " ")
+			if len(parts) > 1 {
+				country := parts[1]
+				sortedConfigs[country] = append(sortedConfigs[country], config)
+			}
+		}
 	}
 
 	return sortedConfigs

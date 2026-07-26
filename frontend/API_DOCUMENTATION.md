@@ -60,7 +60,7 @@ Retrieves the full URL to the subscription endpoint (e.g., for "Copy Link" butto
 
 **Response (text/plain):**
 ```text
-http://192.168.1.100:55000/sub/15
+http://192.168.1.100:55000/sub
 ```
 
 ### GET `/api/get-config`

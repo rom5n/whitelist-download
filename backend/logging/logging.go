@@ -43,7 +43,7 @@ func resetFile(file *os.File) {
 func getFile(filename string) *os.File {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
-		Log.Fatal("error opening file", zap.String("filename", filename), zap.Error(err))
+		log.Fatalf("error opening file %s: %v", filename, err)
 	}
 
 	return file

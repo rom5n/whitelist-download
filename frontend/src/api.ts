@@ -11,6 +11,11 @@ export interface Statistics {
   up_at: number;
 }
 
+/** Configs response from GET /api/configs */
+export interface ConfigsResponse {
+  configs: string[];
+}
+
 /** Application config from GET /api/get-config and POST /api/set-config */
 export interface AppConfig {
   app_name: string;
@@ -23,6 +28,7 @@ export interface AppConfig {
   update_interval_minutes: number;
   sources: string[];
   forced_ip: string;
+  working_check_level: number;
 }
 
 /**
@@ -32,6 +38,21 @@ export interface AppConfig {
 export async function fetchStatistics(): Promise<Statistics> {
   const res = await fetch('/api/statistics');
   if (!res.ok) throw new Error('Failed to fetch statistics');
+  return res.json();
+}
+
+/**
+ * Fetches the list of VLESS configurations.
+ * Endpoint: GET /api/configs
+ */
+export async function fetchConfigs(country?: string, offset: number = 1, limit: number = 0): Promise<ConfigsResponse> {
+  const params = new URLSearchParams();
+  if (country) params.set('country', country);
+  if (offset > 1) params.set('offset', offset.toString());
+  if (limit > 0) params.set('limit', limit.toString());
+  
+  const res = await fetch(`/api/configs?${params.toString()}`);
+  if (!res.ok) throw new Error('Failed to fetch configs');
   return res.json();
 }
 
@@ -125,5 +146,54 @@ export function parseBaseSubLink(rawLink: string): string {
     const lastPart = parts[parts.length - 1];
     if (/^\d+(-\d+)?$/.test(lastPart)) parts.pop();
     return parts.join('/');
+  }
+}
+
+export interface ParsedConfig {
+  protocol: string;
+  uuid: string;
+  ip: string;
+  port: string;
+  params: URLSearchParams;
+  name: string;
+  flag: string;
+  country: string;
+  sequence: string;
+}
+
+export function parseVlessString(rawLink: string): ParsedConfig | null {
+  try {
+    const url = new URL(rawLink);
+    const protocol = url.protocol.replace(':', '');
+    const uuid = url.username;
+    const ip = url.hostname;
+    const port = url.port;
+    const params = url.searchParams;
+    const name = decodeURIComponent(url.hash.substring(1));
+    
+    // Extract flag, country, and sequence if possible
+    // Example: "🇺🇸 United States — #1"
+    let flag = '';
+    let country = '';
+    let sequence = '';
+    
+    const parts = name.split(' — ');
+    if (parts.length === 2) {
+      sequence = parts[1];
+      const countryPart = parts[0];
+      const match = countryPart.match(/^([\uD800-\uDBFF][\uDC00-\uDFFF]|\S+)\s+(.+)$/);
+      if (match) {
+        flag = match[1];
+        country = match[2];
+      } else {
+        country = countryPart;
+      }
+    } else {
+      country = name;
+    }
+
+    return { protocol, uuid, ip, port, params, name, flag, country, sequence };
+  } catch {
+    return null;
   }
 }

@@ -56,6 +56,9 @@ func DownloadUpdate(state *domain.SafeUpdaterState, cancel context.CancelFunc) e
 	if st.Status != "available" && st.Status != "error" {
 		return fmt.Errorf("no update available to download")
 	}
+	if st.Version == "" {
+		return fmt.Errorf("no update version known")
+	}
 
 	state.SetStatus("downloading")
 	state.SetProgress(0)
@@ -93,6 +96,13 @@ func checkAndApplyUpdate(ctx context.Context, cfg *config.Config, state *domain.
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 404 {
+		// No latest release found (e.g. repo has no releases yet)
+		logging.Log.Info("no updates found (no releases in repo)", zap.String("current", currentVersion))
+		state.SetStatus("up-to-date")
+		return
+	}
+
 	if resp.StatusCode != 200 {
 		state.SetError(fmt.Sprintf("github api returned status %d", resp.StatusCode))
 		return
@@ -108,6 +118,7 @@ func checkAndApplyUpdate(ctx context.Context, cfg *config.Config, state *domain.
 	current := strings.TrimPrefix(currentVersion, "v")
 
 	if latestVersion == current {
+		logging.Log.Info("no new updates found", zap.String("current", currentVersion))
 		state.SetStatus("up-to-date")
 		return
 	}
@@ -115,10 +126,12 @@ func checkAndApplyUpdate(ctx context.Context, cfg *config.Config, state *domain.
 	isMajor, isPatch := compareVersions(current, latestVersion)
 
 	if !isMajor && !isPatch {
+		logging.Log.Info("no new updates found", zap.String("current", currentVersion))
 		state.SetStatus("up-to-date")
 		return
 	}
 
+	logging.Log.Info("new update found", zap.String("latest", latestVersion), zap.String("current", currentVersion))
 	state.SetAvailable(latestVersion, release.Name, release.Body)
 
 	cfgSafe := cfg.RetrieveSafe(config.AutoUpdateMajor, config.AutoUpdatePatch)

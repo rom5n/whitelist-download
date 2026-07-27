@@ -24,6 +24,8 @@ const (
 	Sources           Field = "Sources"
 	ForcedIP          Field = "ForcedIP"
 	WorkingCheckLevel Field = "WorkingCheckLevel"
+	AutoUpdateMajor   Field = "AutoUpdateMajor"
+	AutoUpdatePatch   Field = "AutoUpdatePatch"
 )
 
 type Config struct {
@@ -38,27 +40,33 @@ type Config struct {
 	Sources           []string `json:"sources"`                  // Configs sources
 	ForcedIP          string   `json:"forced_ip"`                // Forced IP if your system identified invalid ip address (often happens on VPS servers)
 	WorkingCheckLevel int      `json:"working_check_level"`      // 1 or 2. 1 - ping test, 2 - sing box core test
+	AutoUpdateMajor   bool     `json:"auto_update_major"`        // Auto download major updates
+	AutoUpdatePatch   bool     `json:"auto_update_patch"`        // Auto download bug fixes & improvements
 }
 
-// defaultCfg Default app config
-var defaultCfg = Config{
-	AppName:           "WhitelistsDownload",
-	SubscriptionTitle: "🌊 OpenSource VPN",
-	DescriptionText:   "⚡ Subscriptions from open sources",
-	Port:              "55000",
-	ConfigsPath:       "configs.txt",
-	SubscriptionPath:  "/sub",
-	UpdateInterval:    60,
-	ForcedIP:          "",
-	WorkingCheckLevel: 1,
-	Sources: []string{
-		"https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt",
-		"https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
-		"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
-		"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile-2.txt",
-		"https://raw.githubusercontent.com/whoahaow/rjsxrd/refs/heads/main/githubmirror/bypass/bypass-all.txt",
-		"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-CIDR-RU-all.txt",
-	},
+// newDefaultConfig Returns default app config
+func newDefaultConfig() *Config {
+	return &Config{
+		AppName:           "WhitelistsDownload",
+		SubscriptionTitle: "🌊 OpenSource VPN",
+		DescriptionText:   "⚡ Subscriptions from open sources",
+		Port:              "55000",
+		ConfigsPath:       "configs.txt",
+		SubscriptionPath:  "/sub",
+		UpdateInterval:    60,
+		ForcedIP:          "",
+		WorkingCheckLevel: 1,
+		AutoUpdateMajor:   false,
+		AutoUpdatePatch:   true,
+		Sources: []string{
+			"https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt",
+			"https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
+			"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
+			"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile-2.txt",
+			"https://raw.githubusercontent.com/whoahaow/rjsxrd/refs/heads/main/githubmirror/bypass/bypass-all.txt",
+			"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-CIDR-RU-all.txt",
+		},
+	}
 }
 
 func Load() *Config {
@@ -78,24 +86,25 @@ func Load() *Config {
 		logging.Log.Fatal("failed to read file config.json", zap.Error(err))
 	}
 
-	var currentConfig Config
-	if err = json.Unmarshal(fileData, &currentConfig); err != nil {
+	currentConfig := newDefaultConfig()
+	if err = json.Unmarshal(fileData, currentConfig); err != nil {
 		logging.Log.Fatal("syntax error in config.json. fix the file or delete it to use default app config", zap.Error(err))
 	}
 
-	return &currentConfig
+	return currentConfig
 }
 
 func DefaultConfig(configPath string) *Config {
 	logging.Log.Warn("file config.json not found. using defaults.")
 
-	defaultJSON, _ := json.MarshalIndent(&defaultCfg, "", "  ")
+	currentConfig := newDefaultConfig()
+	defaultJSON, _ := json.MarshalIndent(currentConfig, "", "  ")
 
 	if err := os.WriteFile(configPath, defaultJSON, 0644); err != nil {
 		logging.Log.Fatal("failed to create file config.json", zap.Error(err))
 	}
 
-	return &defaultCfg
+	return currentConfig
 }
 
 func (config *Config) Set(new *Config) error {
@@ -112,6 +121,8 @@ func (config *Config) Set(new *Config) error {
 	config.UpdateInterval = new.UpdateInterval
 	config.ForcedIP = new.ForcedIP
 	config.WorkingCheckLevel = new.WorkingCheckLevel
+	config.AutoUpdateMajor = new.AutoUpdateMajor
+	config.AutoUpdatePatch = new.AutoUpdatePatch
 
 	if err := config.Save(); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -177,6 +188,10 @@ func (config *Config) RetrieveSafe(fields ...Field) *Config {
 			cfg.Sources = sources
 		case WorkingCheckLevel:
 			cfg.WorkingCheckLevel = config.WorkingCheckLevel
+		case AutoUpdateMajor:
+			cfg.AutoUpdateMajor = config.AutoUpdateMajor
+		case AutoUpdatePatch:
+			cfg.AutoUpdatePatch = config.AutoUpdatePatch
 		}
 	}
 

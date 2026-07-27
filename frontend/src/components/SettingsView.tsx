@@ -16,7 +16,11 @@ function SectionDivider({ label }: { label: string }) {
   );
 }
 
-export default function SettingsView() {
+interface SettingsViewProps {
+  version: string | undefined;
+}
+
+export default function SettingsView({ version }: SettingsViewProps) {
   const { t } = useTranslation();
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [original, setOriginal] = useState<AppConfig | null>(null);
@@ -67,7 +71,7 @@ export default function SettingsView() {
         : 'border-[var(--color-border)] focus:border-accent focus:ring-2 focus:ring-accent/20'
     }`;
 
-  const updateField = (field: keyof AppConfig, value: string | number) => {
+  const updateField = (field: keyof AppConfig, value: string | number | boolean) => {
     setConfig({ ...config, [field]: value });
   };
 
@@ -217,6 +221,30 @@ export default function SettingsView() {
             </div>
           </div>
 
+          {/* === Updates === */}
+          <SectionDivider label={t('settings.updates')} />
+
+          <div className="flex flex-col gap-4 mb-8">
+            <label className="flex items-center gap-3 cursor-pointer w-max">
+              <input 
+                type="checkbox" 
+                checked={config.auto_update_major} 
+                onChange={e => updateField('auto_update_major', e.target.checked)}
+                className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
+              />
+              <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoUpdateMajor')}</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer w-max">
+              <input 
+                type="checkbox" 
+                checked={config.auto_update_patch} 
+                onChange={e => updateField('auto_update_patch', e.target.checked)}
+                className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
+              />
+              <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoUpdatePatch')}</span>
+            </label>
+          </div>
+
           {/* === Network === */}
           <SectionDivider label={t('settings.network')} />
 
@@ -307,9 +335,21 @@ export default function SettingsView() {
             ))}
           </div>
           {restartBadge('sources')}
-
-
         </div>
+        
+        {version && (
+          <div className="text-center mt-6">
+            <a
+              href={`https://github.com/rom5n/whitelist-download/releases/tag/v${version}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-[var(--color-text-muted)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
+              title="Open release in GitHub"
+            >
+              v{version}
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );

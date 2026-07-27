@@ -10,6 +10,7 @@ import (
 	"github.com/rom5n/whitelist-download/backend/aggregator"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 	"github.com/rom5n/whitelist-download/backend/logging"
+	"github.com/rom5n/whitelist-download/backend/updater"
 	"go.uber.org/zap"
 	"net/url"
 	"sort"
@@ -487,7 +488,7 @@ func getConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func setConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) {
+func setConfig(ctx context.Context, cfg *config.Config, state *domain.SafeUpdaterState, stats *domain.Statistics, cancel context.CancelFunc) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
@@ -505,7 +506,14 @@ func setConfig(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
+		stats.Lock()
+		stats.UpdateInterval = cfg.UpdateInterval
+		stats.Unlock()
+
 		logging.Log.Info("app config updated")
+		
+		go updater.CheckUpdate(ctx, cfg, state, cancel)
+		
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -583,5 +591,37 @@ func getLogs(path string) func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to flush logs", http.StatusInternalServerError)
 			return
 		}
+	}
+}
+
+func getUpdaterStatus(state *domain.SafeUpdaterState) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+		err := json.NewEncoder(w).Encode(state.Get())
+		if err != nil {
+			logging.Log.Error("failed to get updater status", zap.Error(err))
+			http.Error(w, "failed to get updater status", http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func downloadUpdate(state *domain.SafeUpdaterState, cancel context.CancelFunc) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		go func() {
+			if err := updater.DownloadUpdate(state, cancel); err != nil {
+				logging.Log.Error("manual update failed", zap.Error(err))
+			}
+		}()
+
+		w.WriteHeader(http.StatusOK)
 	}
 }

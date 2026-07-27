@@ -4,7 +4,9 @@ import Sidebar from './components/Sidebar';
 import DetailsView from './components/DetailsView';
 import SettingsView from './components/SettingsView';
 import LogsView from './components/LogsView';
-import { fetchStatistics, fetchSubscriptionLink, fetchConfigs, type Statistics } from './api';
+import UpdateView from './components/UpdateView';
+import StatisticsView from './components/StatisticsView';
+import { fetchStatistics, fetchSubscriptionLink, fetchConfigs, fetchUpdaterStatus, type Statistics, type UpdaterState } from './api';
 import { useTranslation } from './i18n';
 import { useTheme } from './ThemeContext';
 
@@ -48,7 +50,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-type RightPaneMode = 'details' | 'settings' | 'logs';
+type RightPaneMode = 'details' | 'settings' | 'logs' | 'update' | 'statistics';
 
 export default function App() {
   const { t, language, setLanguage } = useTranslation();
@@ -71,6 +73,28 @@ export default function App() {
   const [offset, setOffset] = useState(1);
   const [limit, setLimit] = useState(0); // 0 means "No limit"
   const [githubStars, setGithubStars] = useState<number | null>(null);
+  
+  const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+
+  useEffect(() => {
+    let timer: number;
+    
+    const fetchUpdates = () => fetchUpdaterStatus().then(st => {
+      setUpdaterState(st);
+    }).catch(e => {
+      setUpdaterState(prev => {
+        if (prev?.status === 'installing' || prev?.status === 'downloading') {
+          return { ...prev, status: 'reload' };
+        }
+        return prev;
+      });
+      console.error(e);
+    });
+    
+    fetchUpdates();
+    timer = window.setInterval(fetchUpdates, 500);
+    return () => clearInterval(timer);
+  }, []);
 
   // Caching mechanism
   const configsCache = useRef<Record<string, { data: string[], lastUpdate: number }>>({});
@@ -216,6 +240,43 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3">
+          {(updaterState?.status === 'downloading' || updaterState?.status === 'installing' || updaterState?.status === 'reload') && (
+            <button
+              onClick={() => {
+                setMode('update');
+                if (window.innerWidth < 768) setMobileView('content');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition-colors flex items-center gap-2 border ${
+                updaterState.status === 'reload' 
+                  ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20'
+                  : 'text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20 animate-pulse'
+              }`}
+            >
+              {updaterState.status === 'downloading' && (
+                <div className="flex items-center gap-2 relative">
+                  <span className="z-10">{t('update.downloading')} {updaterState.progress}%</span>
+                  <div className="absolute left-0 top-0 bottom-0 bg-blue-500/20 rounded z-0" style={{ width: `${updaterState.progress}%` }} />
+                </div>
+              )}
+              {updaterState.status === 'installing' && t('update.installing')}
+              {updaterState.status === 'reload' && t('update.reload')}
+            </button>
+          )}
+          {(updaterState?.status === 'available' || updaterState?.status === 'error') && (
+            <button
+              onClick={() => {
+                setMode('update');
+                if (window.innerWidth < 768) setMobileView('content');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition-colors flex items-center gap-2 border ${
+                updaterState.status === 'error'
+                  ? 'text-danger bg-danger/10 hover:bg-danger/20 border-danger/20'
+                  : 'text-accent bg-accent/10 hover:bg-accent/20 border-accent/20'
+              }`}
+            >
+              {updaterState.status === 'error' ? t('update.error') : `${t('update.newVersion')} ${updaterState.version}`}
+            </button>
+          )}
           <button
             onClick={() => {
               setMode('details');
@@ -238,6 +299,17 @@ export default function App() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
           
+          <button
+            onClick={() => {
+              setMode('statistics');
+              if (window.innerWidth < 768) setMobileView('content');
+            }}
+            title={t('control.statistics')}
+            className={`p-2 rounded-lg cursor-pointer transition-colors ${mode === 'statistics' ? 'bg-accent/20 text-accent' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-[var(--color-text-primary)]'}`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M18 20V10M12 20V4M6 20v-6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+
           <button
             onClick={() => {
               setMode('settings');
@@ -313,8 +385,10 @@ export default function App() {
               />
             )}
             
-            {mode === 'settings' && <SettingsView />}
+            {mode === 'settings' && <SettingsView version={stats?.version} />}
             {mode === 'logs' && <LogsView />}
+            {mode === 'statistics' && <StatisticsView stats={stats} />}
+            {mode === 'update' && <UpdateView updaterState={updaterState} />}
           </ErrorBoundary>
         </div>
       </div>

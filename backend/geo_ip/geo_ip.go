@@ -10,15 +10,15 @@ import (
 	"github.com/oschwald/geoip2-golang"
 )
 
-//go:embed geolite.mmdb
-var geoliteData []byte
+//go:embed geoip.mmdb
+var geoipData []byte
 
 type Locator struct {
 	db *geoip2.Reader
 }
 
 func InitLocator() *Locator {
-	db, err := geoip2.FromBytes(geoliteData)
+	db, err := geoip2.FromBytes(geoipData)
 	if err != nil {
 		logging.Log.Fatal("failed to open GeoIP database", zap.Error(err))
 	}

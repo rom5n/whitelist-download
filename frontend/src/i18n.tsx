@@ -29,6 +29,14 @@ const translations: Record<Language, Record<string, string>> = {
     'stats.byRegion': 'By Region',
     'stats.loading': 'Loading...',
     'stats.updating': 'Updating...',
+    'statsView.description': 'Application metrics and status',
+    'statsView.uptime': 'Uptime',
+    'statsView.countries': 'Countries',
+    'statsView.lastUpdate': 'Last Configs Update',
+    'statsView.nextUpdate': 'Next Configs Update',
+    'statsView.calculating': 'Calculating...',
+    'statsView.soon': 'Soon',
+    'statsView.never': 'Never',
 
     // Control panel
     'control.title': 'Controls',
@@ -41,6 +49,7 @@ const translations: Record<Language, Record<string, string>> = {
     'control.done': 'Done',
     'control.settings': 'Settings',
     'control.logs': 'Logs',
+    'control.statistics': 'Statistics',
 
     // Logs modal
     'logs.title': 'Server Logs',
@@ -83,7 +92,20 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.levelNormal': 'Normal',
     'settings.levelUltra': 'Ultra',
     'settings.unsavedChanges': 'Unsaved changes',
+    'settings.updates': 'Updates',
+    'settings.autoUpdateMajor': 'Auto-download major updates',
+    'settings.autoUpdatePatch': 'Auto-download bug fixes & improvements',
     'sub.noLimit': 'No limit',
+
+    // Updates
+    'update.downloading': 'Downloading update...',
+    'update.installing': 'Installing...',
+    'update.reload': 'Reload the page',
+    'update.downloadInstall': 'Download & Install',
+    'update.upToDate': 'You are up to date!',
+    'update.error': 'Update Error',
+    'update.noNotes': 'No release notes provided.',
+    'update.newVersion': 'New version',
 
     // Sidebar & Details
     'sidebar.filter': 'Filter by Country',
@@ -98,7 +120,7 @@ const translations: Record<Language, Record<string, string>> = {
     'details.scanOrCopy': 'Scan the QR code or copy the link to import into your.',
     'details.paginationConfig': 'Pagination Configuration',
     'details.limit': 'Limit',
-    'details.adjustSliders': '',
+
     'details.unknownLocation': 'Unknown Location',
     'details.config': 'Config',
     'details.protocol': 'Protocol',
@@ -140,6 +162,14 @@ const translations: Record<Language, Record<string, string>> = {
     'stats.byRegion': 'По регионам',
     'stats.loading': 'Загрузка...',
     'stats.updating': 'Обновление...',
+    'statsView.description': 'Показатели и статус приложения',
+    'statsView.uptime': 'Время работы',
+    'statsView.countries': 'Количество стран',
+    'statsView.lastUpdate': 'Последнее обновление',
+    'statsView.nextUpdate': 'Следующее обновление',
+    'statsView.calculating': 'Вычисление...',
+    'statsView.soon': 'Скоро',
+    'statsView.never': 'Никогда',
 
     // Control panel
     'control.title': 'Управление',
@@ -152,6 +182,7 @@ const translations: Record<Language, Record<string, string>> = {
     'control.done': 'Готово',
     'control.settings': 'Настройки',
     'control.logs': 'Логи',
+    'control.statistics': 'Статистика',
 
     // Logs modal
     'logs.title': 'Логи сервера',
@@ -194,7 +225,20 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.levelNormal': 'Обычный',
     'settings.levelUltra': 'Ультра',
     'settings.unsavedChanges': 'Не сохранено',
+    'settings.updates': 'Обновления',
+    'settings.autoUpdateMajor': 'Автоматически скачивать крупные обновления',
+    'settings.autoUpdatePatch': 'Автоматически скачивать исправления багов и улучшения',
     'sub.noLimit': 'Без лимита',
+
+    // Updates
+    'update.downloading': 'Загрузка обновления...',
+    'update.installing': 'Установка...',
+    'update.reload': 'Перезагрузите страницу',
+    'update.downloadInstall': 'Скачать и установить',
+    'update.upToDate': 'У вас последняя версия!',
+    'update.error': 'Ошибка обновления',
+    'update.noNotes': 'Описание обновления не предоставлено.',
+    'update.newVersion': 'Новая версия',
 
     // Sidebar & Details
     'sidebar.filter': 'Фильтр по странам',
@@ -209,7 +253,7 @@ const translations: Record<Language, Record<string, string>> = {
     'details.scanOrCopy': 'Отсканируйте QR-код или скопируйте ссылку для импорта в клиент.',
     'details.paginationConfig': 'Настройка пагинации',
     'details.limit': 'Лимит',
-    'details.adjustSliders': '',
+
     'details.unknownLocation': 'Неизвестная локация',
     'details.config': 'Конфиг',
     'details.protocol': 'Протокол',

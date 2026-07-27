@@ -17,13 +17,19 @@ import (
 	"github.com/rom5n/whitelist-download/backend/http"
 	"github.com/rom5n/whitelist-download/backend/logging"
 	"github.com/rom5n/whitelist-download/backend/startup"
+	"github.com/rom5n/whitelist-download/backend/updater"
+)
+
+const (
+	AppVersion = "1.5.1"
 )
 
 func main() {
 	time.Sleep(10 * time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
+	ctx = context.WithValue(ctx, "version", AppVersion)
 	setExecutableDir()
-	
+
 	logging.Initialize()
 	defer logging.Log.Sync()
 
@@ -31,8 +37,9 @@ func main() {
 	startup.Add(cfg)
 
 	configsCache := &domain.SafeConfigsCache{}
-	statistics := &domain.Statistics{StartedAt: time.Now().Unix()}
+	statistics := &domain.Statistics{StartedAt: time.Now().Unix(), Version: AppVersion, UpdateInterval: cfg.UpdateInterval}
 	locator := geo_ip.InitLocator()
+	updaterState := &domain.SafeUpdaterState{}
 
 	go handleShutdown(cancel)
 
@@ -42,7 +49,13 @@ func main() {
 	go aggregator.StartPollingConfigs(ctx, &wg, cfg, configsCache, statistics, locator)
 
 	wg.Add(1)
-	http.Start(ctx, cancel, &wg, cfg, configsCache, statistics, locator)
+	go func() {
+		defer wg.Done()
+		updater.Start(ctx, cfg, updaterState, cancel)
+	}()
+
+	wg.Add(1)
+	http.Start(ctx, cancel, &wg, cfg, configsCache, statistics, locator, updaterState)
 
 	logging.Log.Info("waiting for tasks to finish...")
 	wg.Wait()
@@ -65,5 +78,6 @@ func setExecutableDir() {
 		if err = os.Chdir(exeDir); err != nil {
 			logging.Log.Fatal("failed to change the executable directory name", zap.Error(err))
 		}
+		os.Remove(exePath + ".old")
 	}
 }

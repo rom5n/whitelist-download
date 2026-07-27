@@ -147,9 +147,7 @@ export default function DetailsView({
                     className="w-full accent-accent cursor-pointer"
                   />
                 </div>
-                <p className="text-xs text-[var(--color-text-muted)] mt-2">
-                  {t('details.adjustSliders')}
-                </p>
+
               </div>
             </div>
           </>

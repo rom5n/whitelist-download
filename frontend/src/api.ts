@@ -9,6 +9,8 @@ export interface Statistics {
   configs_by_country: Record<string, number>;
   last_update: number;
   up_at: number;
+  update_interval: number;
+  version: string;
 }
 
 /** Configs response from GET /api/configs */
@@ -29,6 +31,17 @@ export interface AppConfig {
   sources: string[];
   forced_ip: string;
   working_check_level: number;
+  auto_update_major: boolean;
+  auto_update_patch: boolean;
+}
+
+export interface UpdaterState {
+  status: 'checking' | 'available' | 'downloading' | 'installing' | 'reload' | 'up-to-date' | 'error';
+  version: string;
+  title: string;
+  description: string;
+  error: string;
+  progress: number;
 }
 
 /**
@@ -196,4 +209,15 @@ export function parseVlessString(rawLink: string): ParsedConfig | null {
   } catch {
     return null;
   }
+}
+
+export async function fetchUpdaterStatus(): Promise<UpdaterState> {
+  const res = await fetch('/api/updater/status');
+  if (!res.ok) throw new Error('Failed to fetch updater status');
+  return res.json();
+}
+
+export async function triggerUpdaterDownload(): Promise<boolean> {
+  const res = await fetch('/api/updater/download', { method: 'POST' });
+  return res.ok;
 }

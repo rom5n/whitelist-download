@@ -30,12 +30,12 @@ type serverConfig struct {
 	WebLink          string
 }
 
-func Start(ctx context.Context, cancel context.CancelFunc, wg *sync.WaitGroup, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) {
+func Start(ctx context.Context, cancel context.CancelFunc, wg *sync.WaitGroup, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator, updaterState *domain.SafeUpdaterState) {
 	defer wg.Done()
 	serverCfg := getServerConfig(cfg)
 	
 	mux := http.NewServeMux()
-	connectRoutes(ctx, cancel, mux, cfg, serverCfg, statistics, locator, configsCache)
+	connectRoutes(ctx, cancel, mux, cfg, serverCfg, statistics, locator, configsCache, updaterState)
 	startupLogs(serverCfg)
 
 	srv := &http.Server{
@@ -90,7 +90,7 @@ func getServerConfig(cfg *config.Config) *serverConfig {
 	}
 }
 
-func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.ServeMux, cfg *config.Config, serverCfg *serverConfig, statistics *domain.Statistics, locator *geo_ip.Locator, configsCache *domain.SafeConfigsCache) {
+func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.ServeMux, cfg *config.Config, serverCfg *serverConfig, statistics *domain.Statistics, locator *geo_ip.Locator, configsCache *domain.SafeConfigsCache, updaterState *domain.SafeUpdaterState) {
 	subPath := serverCfg.SubscriptionPath
 	ip := serverCfg.IP
 	port := serverCfg.Port
@@ -105,9 +105,11 @@ func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.Ser
 	mux.Handle("/api/restart", http.HandlerFunc(restart(cancel)))
 	mux.Handle("/api/update-configs", http.HandlerFunc(updateConfigs(ctx, cfg, configsCache, statistics, locator)))
 	mux.Handle("/api/get-config", http.HandlerFunc(getConfig(cfg)))
-	mux.Handle("/api/set-config", http.HandlerFunc(setConfig(cfg)))
+	mux.Handle("/api/set-config", http.HandlerFunc(setConfig(ctx, cfg, updaterState, statistics, cancel)))
 	mux.Handle("/api/logs", http.HandlerFunc(getLogs(logging.LogPath)))
 	mux.Handle("/api/configs", http.HandlerFunc(getConfigs(cfg, configsCache)))
+	mux.Handle("/api/updater/status", http.HandlerFunc(getUpdaterStatus(updaterState)))
+	mux.Handle("/api/updater/download", http.HandlerFunc(downloadUpdate(updaterState, cancel)))
 
 	distFS, err := fs.Sub(staticFiles, "dist")
 	if err != nil {

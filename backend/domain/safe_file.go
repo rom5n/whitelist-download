@@ -1,10 +1,11 @@
 package domain
 
 import (
-	"github.com/rom5n/whitelist-download/backend/logging"
-	"go.uber.org/zap"
 	"os"
 	"sync"
+
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 )
 
 type SafeFile struct {
@@ -58,7 +59,8 @@ func (f *SafeFile) WriteString(s string) (int, error) {
 func GetFile(filename string) *SafeFile {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
-		logging.Log.Fatal("error opening file", zap.String("filename", filename), zap.Error(err))
+		logging.Log.Error("error opening file", zap.String("filename", filename), zap.Error(err))
+		os.Exit(1)
 	}
 
 	return &SafeFile{file: file, Name: filename}

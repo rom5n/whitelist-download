@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/adrg/xdg"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 	"github.com/rom5n/whitelist-download/backend/logging"
@@ -13,6 +14,8 @@ import (
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"go.uber.org/zap"
+
+	"path/filepath"
 
 	"net"
 	"net/http"
@@ -49,28 +52,28 @@ func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
-	logging.Log.Info("getting configs")
+	logging.Log.Debug("getting configs")
 	configs, copies, err := getConfigs(ctx, sources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get configs: %w", err)
 	}
 
-	logging.Log.Info("checking configs for availability")
+	logging.Log.Debug("checking configs for availability")
 	workingConfigs, err := filterWorkingConfigs(ctx, configs, level)
 	if err != nil {
 		return nil, fmt.Errorf("failed to filter working configs: %w", err)
 	}
 
-	logging.Log.Info("formatting configs")
+	logging.Log.Debug("formatting configs")
 	formattedConfigs, configsByCountry, err := formatConfigs(ctx, workingConfigs, locator)
 	if err != nil {
 		return nil, fmt.Errorf("failed to format configs: %w", err)
 	}
 
-	logging.Log.Info("sorting configs")
+	logging.Log.Debug("sorting configs")
 	sortedConfigs := SortConfigs(formattedConfigs)
 
-	logging.Log.Info("updating cache and file")
+	logging.Log.Debug("updating cache and file")
 	if err = updateCacheAndFile(sortedConfigs, configsCache, configsPath); err != nil {
 		return nil, fmt.Errorf("failed to update cache and file: %w", err)
 	}
@@ -127,7 +130,7 @@ func singBoxCheck(config string, timeout time.Duration) bool {
 
 	opts, err := buildSingBoxOptions(config, localPort)
 	if err != nil {
-		logging.Log.Error("sing-box parse error", zap.Error(err))
+		logging.Log.Debug("sing-box parse error", zap.Error(err))
 		return false
 	}
 
@@ -138,14 +141,14 @@ func singBoxCheck(config string, timeout time.Duration) bool {
 		Options: opts,
 	})
 	singBoxMutex.Unlock()
-	
+
 	if err != nil {
-		logging.Log.Error("sing-box core instance error", zap.Error(err))
+		logging.Log.Debug("sing-box core instance error", zap.Error(err))
 		return false
 	}
 
 	if err := instance.Start(); err != nil {
-		logging.Log.Error("sing-box start error", zap.Error(err))
+		logging.Log.Debug("sing-box start error", zap.Error(err))
 		return false
 	}
 	defer instance.Close()
@@ -255,9 +258,9 @@ func buildSingBoxOptions(link string, localPort int) (option.Options, error) {
 		},
 		Outbounds: []option.Outbound{
 			{
-				Type:                 "vless",
-				Tag:                  "proxy",
-				Options:              &vless,
+				Type:    "vless",
+				Tag:     "proxy",
+				Options: &vless,
 			},
 		},
 	}, nil
@@ -408,11 +411,11 @@ func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip
 
 		go func() {
 			defer wg.Done()
-			
+
 			if ctx.Err() != nil {
 				return
 			}
-			
+
 			workersCh <- struct{}{}
 			defer func() {
 				<-workersCh
@@ -468,14 +471,14 @@ func SortConfigs(formattedConfigs []string) map[string][]string {
 	for _, config := range formattedConfigs {
 		urlParts, err := url.Parse(config)
 		if err != nil {
-			logging.Log.Error("failed to parse config url while sorting", zap.String("url", config), zap.Error(err))
+			logging.Log.Warn("failed to parse config url while sorting", zap.String("url", config), zap.Error(err))
 			continue
 		}
-		
+
 		fragment := urlParts.Fragment
 		firstSpace := strings.Index(fragment, " ")
 		dashIndex := strings.Index(fragment, " — ")
-		
+
 		if firstSpace != -1 && dashIndex != -1 && dashIndex > firstSpace {
 			country := fragment[firstSpace+1 : dashIndex]
 			sortedConfigs[country] = append(sortedConfigs[country], config)
@@ -493,6 +496,20 @@ func SortConfigs(formattedConfigs []string) map[string][]string {
 }
 
 func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache, configsPath string) error {
+	dataFilePath, err := xdg.DataFile(filepath.Join("whitelist-download", filepath.Base(configsPath)))
+	if err == nil {
+		exePath, err := os.Executable()
+		if err == nil {
+			oldDataPath := filepath.Join(filepath.Dir(exePath), filepath.Base(configsPath))
+			if _, err := os.Stat(oldDataPath); err == nil {
+				if _, err := os.Stat(dataFilePath); os.IsNotExist(err) {
+					os.Rename(oldDataPath, dataFilePath)
+				}
+			}
+		}
+		configsPath = dataFilePath
+	}
+
 	if len(sortedConfigs) > 0 {
 		configsCache.Set(sortedConfigs)
 

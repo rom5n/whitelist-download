@@ -33,6 +33,7 @@ export interface AppConfig {
   working_check_level: number;
   auto_update_major: boolean;
   auto_update_patch: boolean;
+  auto_browser_open: boolean;
 }
 
 export interface UpdaterState {

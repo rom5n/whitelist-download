@@ -95,6 +95,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.updates': 'Updates',
     'settings.autoUpdateMajor': 'Auto-download major updates',
     'settings.autoUpdatePatch': 'Auto-download bug fixes & improvements',
+    'settings.autoBrowserOpen': 'Auto-open browser on startup',
     'sub.noLimit': 'No limit',
 
     // Updates
@@ -228,6 +229,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.updates': 'Обновления',
     'settings.autoUpdateMajor': 'Автоматически скачивать крупные обновления',
     'settings.autoUpdatePatch': 'Автоматически скачивать исправления багов и улучшения',
+    'settings.autoBrowserOpen': 'Автоматически открывать браузер при запуске',
     'sub.noLimit': 'Без лимита',
 
     // Updates

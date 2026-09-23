@@ -2,10 +2,12 @@ package geo_ip
 
 import (
 	_ "embed"
+	"net"
+	"os"
+	"strings"
+
 	"github.com/rom5n/whitelist-download/backend/logging"
 	"go.uber.org/zap"
-	"net"
-	"strings"
 
 	"github.com/oschwald/geoip2-golang"
 )
@@ -20,7 +22,8 @@ type Locator struct {
 func InitLocator() *Locator {
 	db, err := geoip2.FromBytes(geoipData)
 	if err != nil {
-		logging.Log.Fatal("failed to open GeoIP database", zap.Error(err))
+		logging.Log.Error("failed to open GeoIP database", zap.Error(err))
+		os.Exit(1)
 	}
 
 	return &Locator{db: db}

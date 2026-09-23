@@ -5,18 +5,21 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"github.com/rom5n/whitelist-download/backend/logging"
-	"go.uber.org/zap"
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
+
 	"github.com/rom5n/whitelist-download/backend/config"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
+	"github.com/rom5n/whitelist-download/backend/http/handler"
 )
 
 //go:embed dist/*
@@ -33,7 +36,7 @@ type serverConfig struct {
 func Start(ctx context.Context, cancel context.CancelFunc, wg *sync.WaitGroup, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator, updaterState *domain.SafeUpdaterState) {
 	defer wg.Done()
 	serverCfg := getServerConfig(cfg)
-	
+
 	mux := http.NewServeMux()
 	connectRoutes(ctx, cancel, mux, cfg, serverCfg, statistics, locator, configsCache, updaterState)
 	startupLogs(serverCfg)
@@ -45,7 +48,8 @@ func Start(ctx context.Context, cancel context.CancelFunc, wg *sync.WaitGroup, c
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logging.Log.Fatal("error while starting subscription server", zap.Error(err))
+			logging.Log.Error("error while starting subscription server", zap.Error(err))
+			os.Exit(1)
 		}
 	}()
 
@@ -96,29 +100,30 @@ func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.Ser
 	port := serverCfg.Port
 
 	// Subscription paths
-	mux.HandleFunc(subPath, subscriptionHandler(cfg, configsCache))
-	mux.HandleFunc(subPath+"/", subscriptionHandler(cfg, configsCache))
+	mux.HandleFunc(subPath, handler.Subscription(cfg, configsCache))
+	mux.HandleFunc(subPath+"/", handler.Subscription(cfg, configsCache))
 
 	// API paths
-	mux.Handle("/api/subscription-link", http.HandlerFunc(getSubscriptionLink(cfg, ip, port)))
-	mux.Handle("/api/statistics", http.HandlerFunc(getStatistics(statistics)))
-	mux.Handle("/api/restart", http.HandlerFunc(restart(cancel)))
-	mux.Handle("/api/update-configs", http.HandlerFunc(updateConfigs(ctx, cfg, configsCache, statistics, locator)))
-	mux.Handle("/api/get-config", http.HandlerFunc(getConfig(cfg)))
-	mux.Handle("/api/set-config", http.HandlerFunc(setConfig(ctx, cfg, updaterState, statistics, cancel)))
-	mux.Handle("/api/logs", http.HandlerFunc(getLogs(logging.LogPath)))
-	mux.Handle("/api/configs", http.HandlerFunc(getConfigs(cfg, configsCache)))
-	mux.Handle("/api/updater/status", http.HandlerFunc(getUpdaterStatus(updaterState)))
-	mux.Handle("/api/updater/download", http.HandlerFunc(downloadUpdate(updaterState, cancel)))
+	mux.Handle("/api/subscription-link", http.HandlerFunc(handler.SubscriptionLink(cfg, ip, port)))
+	mux.Handle("/api/statistics", http.HandlerFunc(handler.Statistics(statistics)))
+	mux.Handle("/api/restart", http.HandlerFunc(handler.Restart(cancel)))
+	mux.Handle("/api/update-configs", http.HandlerFunc(handler.UpdateConfigs(ctx, cfg, configsCache, statistics, locator)))
+	mux.Handle("/api/get-config", http.HandlerFunc(handler.Config(cfg)))
+	mux.Handle("/api/set-config", http.HandlerFunc(handler.SetConfig(ctx, cfg, updaterState, statistics, cancel)))
+	mux.Handle("/api/logs", http.HandlerFunc(handler.Logs(logging.LogPath)))
+	mux.Handle("/api/configs", http.HandlerFunc(handler.Configs(cfg, configsCache)))
+	mux.Handle("/api/updater/status", http.HandlerFunc(handler.UpdaterStatus(updaterState)))
+	mux.Handle("/api/updater/download", http.HandlerFunc(handler.DownloadUpdate(updaterState, cancel)))
 
 	distFS, err := fs.Sub(staticFiles, "dist")
 	if err != nil {
-		logging.Log.Fatal("failed to initialize embedded static files", zap.Error(err))
+		logging.Log.Error("failed to initialize embedded static files", zap.Error(err))
+		os.Exit(1)
 	}
 	fileServer := http.FileServer(http.FS(distFS))
 
 	// web frontend path
-	mux.HandleFunc("/", web(fileServer, distFS))
+	mux.HandleFunc("/", handler.Web(fileServer, distFS))
 }
 
 func getIP() string {

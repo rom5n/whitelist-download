@@ -3,16 +3,35 @@ package logging
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
+	"github.com/adrg/xdg"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var Log *zap.Logger
+var LogPath string
 
-const LogPath = "app.log"
 const maxLogSize = 25 * 1024 * 1024 // 25 MB
+
+func resolveLogPath() string {
+	stateFilePath, err := xdg.StateFile(filepath.Join("whitelist-download", "app.log"))
+	if err == nil {
+		exePath, err := os.Executable()
+		if err == nil {
+			oldDataPath := filepath.Join(filepath.Dir(exePath), "app.log")
+			if _, err := os.Stat(oldDataPath); err == nil {
+				if _, err := os.Stat(stateFilePath); os.IsNotExist(err) {
+					os.Rename(oldDataPath, stateFilePath)
+				}
+			}
+		}
+		return stateFilePath
+	}
+	return "app.log"
+}
 
 type rotatingWriter struct {
 	mu       sync.Mutex
@@ -92,6 +111,7 @@ func newRotatingWriter(filename string) *rotatingWriter {
 }
 
 func Initialize() {
+	LogPath = resolveLogPath()
 	file := getFile(LogPath)
 	resetFile(file)
 	file.Close()
@@ -104,7 +124,7 @@ func Initialize() {
 func setLogger(rw *rotatingWriter) {
 	encoderCfg := zap.NewProductionEncoderConfig()
 	encoder := zapcore.NewJSONEncoder(encoderCfg)
-	core := zapcore.NewCore(encoder, zapcore.AddSync(rw), zap.InfoLevel)
+	core := zapcore.NewCore(encoder, zapcore.AddSync(rw), zap.DebugLevel)
 	Log = zap.New(core)
 }
 

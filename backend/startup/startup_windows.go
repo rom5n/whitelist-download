@@ -2,10 +2,11 @@ package startup
 
 import (
 	"fmt"
-	"github.com/rom5n/whitelist-download/backend/logging"
-	"go.uber.org/zap"
 	"os"
 	"path/filepath"
+
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 
 	"github.com/rom5n/whitelist-download/backend/config"
 	"golang.org/x/sys/windows/registry"

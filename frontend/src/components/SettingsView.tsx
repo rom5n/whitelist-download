@@ -243,6 +243,15 @@ export default function SettingsView({ version }: SettingsViewProps) {
               />
               <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoUpdatePatch')}</span>
             </label>
+            <label className="flex items-center gap-3 cursor-pointer w-max">
+              <input 
+                type="checkbox" 
+                checked={config.auto_browser_open} 
+                onChange={e => updateField('auto_browser_open', e.target.checked)}
+                className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
+              />
+              <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoBrowserOpen')}</span>
+            </label>
           </div>
 
           {/* === Network === */}

@@ -3,11 +3,6 @@ package updater
 import (
 	"context"
 	"fmt"
-	"github.com/goccy/go-json"
-	"github.com/rom5n/whitelist-download/backend/config"
-	"github.com/rom5n/whitelist-download/backend/domain"
-	"github.com/rom5n/whitelist-download/backend/logging"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"os"
@@ -17,6 +12,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/goccy/go-json"
+	"github.com/rom5n/whitelist-download/backend/config"
+	"github.com/rom5n/whitelist-download/backend/domain"
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
 )
 
 type Asset struct {
@@ -98,7 +99,7 @@ func checkAndApplyUpdate(ctx context.Context, cfg *config.Config, state *domain.
 
 	if resp.StatusCode == 404 {
 		// No latest release found (e.g. repo has no releases yet)
-		logging.Log.Info("no updates found (no releases in repo)", zap.String("current", currentVersion))
+		logging.Log.Debug("no updates found (no releases in repo)", zap.String("current", currentVersion))
 		state.SetStatus("up-to-date")
 		return
 	}
@@ -118,7 +119,7 @@ func checkAndApplyUpdate(ctx context.Context, cfg *config.Config, state *domain.
 	current := strings.TrimPrefix(currentVersion, "v")
 
 	if latestVersion == current {
-		logging.Log.Info("no new updates found", zap.String("current", currentVersion))
+		logging.Log.Debug("no new updates found", zap.String("current", currentVersion))
 		state.SetStatus("up-to-date")
 		return
 	}
@@ -126,7 +127,7 @@ func checkAndApplyUpdate(ctx context.Context, cfg *config.Config, state *domain.
 	isMajor, isPatch := compareVersions(current, latestVersion)
 
 	if !isMajor && !isPatch {
-		logging.Log.Info("no new updates found", zap.String("current", currentVersion))
+		logging.Log.Debug("no new updates found", zap.String("current", currentVersion))
 		state.SetStatus("up-to-date")
 		return
 	}

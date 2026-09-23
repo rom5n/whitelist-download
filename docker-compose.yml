@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  whitelist-download:
+    build: .
+    container_name: whitelist-download
+    restart: unless-stopped
+    ports:
+      - "55000:55000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=UTC

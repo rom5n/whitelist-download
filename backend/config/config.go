@@ -2,12 +2,14 @@ package config
 
 import (
 	"fmt"
-	"github.com/rom5n/whitelist-download/backend/logging"
-	"go.uber.org/zap"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/rom5n/whitelist-download/backend/logging"
+	"go.uber.org/zap"
+
+	"github.com/adrg/xdg"
 	"github.com/goccy/go-json"
 )
 
@@ -26,6 +28,7 @@ const (
 	WorkingCheckLevel Field = "WorkingCheckLevel"
 	AutoUpdateMajor   Field = "AutoUpdateMajor"
 	AutoUpdatePatch   Field = "AutoUpdatePatch"
+	AutoBrowserOpen   Field = "AutoBrowserOpen"
 )
 
 type Config struct {
@@ -42,6 +45,7 @@ type Config struct {
 	WorkingCheckLevel int      `json:"working_check_level"`      // 1 or 2. 1 - ping test, 2 - sing box core test
 	AutoUpdateMajor   bool     `json:"auto_update_major"`        // Auto download major updates
 	AutoUpdatePatch   bool     `json:"auto_update_patch"`        // Auto download bug fixes & improvements
+	AutoBrowserOpen   bool     `json:"auto_browser_open"`        // Automatically open default browser on start
 }
 
 // newDefaultConfig Returns default app config
@@ -58,6 +62,7 @@ func newDefaultConfig() *Config {
 		WorkingCheckLevel: 1,
 		AutoUpdateMajor:   false,
 		AutoUpdatePatch:   true,
+		AutoBrowserOpen:   true,
 		Sources: []string{
 			"https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt",
 			"https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
@@ -70,25 +75,36 @@ func newDefaultConfig() *Config {
 }
 
 func Load() *Config {
-	exePath, err := os.Executable()
+	configPath, err := xdg.ConfigFile(filepath.Join("whitelist-download", "config.json"))
 	if err != nil {
-		logging.Log.Fatal("failed to get executable file path", zap.Error(err))
+		logging.Log.Error("failed to resolve config path", zap.Error(err))
+		os.Exit(1)
 	}
 
-	exeDir := filepath.Dir(exePath)
-	configPath := filepath.Join(exeDir, "config.json")
+	exePath, err := os.Executable()
+	if err == nil {
+		exeDir := filepath.Dir(exePath)
+		oldConfigPath := filepath.Join(exeDir, "config.json")
+		if _, err := os.Stat(oldConfigPath); err == nil {
+			if _, err := os.Stat(configPath); os.IsNotExist(err) {
+				os.Rename(oldConfigPath, configPath)
+			}
+		}
+	}
 
 	fileData, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return DefaultConfig(configPath)
 		}
-		logging.Log.Fatal("failed to read file config.json", zap.Error(err))
+		logging.Log.Error("failed to read file config.json", zap.Error(err))
+		os.Exit(1)
 	}
 
 	currentConfig := newDefaultConfig()
 	if err = json.Unmarshal(fileData, currentConfig); err != nil {
-		logging.Log.Fatal("syntax error in config.json. fix the file or delete it to use default app config", zap.Error(err))
+		logging.Log.Error("syntax error in config.json. fix the file or delete it to use default app config", zap.Error(err))
+		os.Exit(1)
 	}
 
 	return currentConfig
@@ -101,7 +117,8 @@ func DefaultConfig(configPath string) *Config {
 	defaultJSON, _ := json.MarshalIndent(currentConfig, "", "  ")
 
 	if err := os.WriteFile(configPath, defaultJSON, 0644); err != nil {
-		logging.Log.Fatal("failed to create file config.json", zap.Error(err))
+		logging.Log.Error("failed to create file config.json", zap.Error(err))
+		os.Exit(1)
 	}
 
 	return currentConfig
@@ -123,6 +140,7 @@ func (config *Config) Set(new *Config) error {
 	config.WorkingCheckLevel = new.WorkingCheckLevel
 	config.AutoUpdateMajor = new.AutoUpdateMajor
 	config.AutoUpdatePatch = new.AutoUpdatePatch
+	config.AutoBrowserOpen = new.AutoBrowserOpen
 
 	if err := config.Save(); err != nil {
 		return fmt.Errorf("save config: %w", err)
@@ -132,13 +150,11 @@ func (config *Config) Set(new *Config) error {
 }
 
 func (config *Config) Save() error {
-	exePath, err := os.Executable()
+	finalPath, err := xdg.ConfigFile(filepath.Join("whitelist-download", "config.json"))
 	if err != nil {
-		return fmt.Errorf("failed to get program's path: %w", err)
+		return fmt.Errorf("failed to resolve config path: %w", err)
 	}
-	exeDir := filepath.Dir(exePath)
 
-	finalPath := filepath.Join(exeDir, "config.json")
 	tmpPath := finalPath + ".tmp"
 
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -192,6 +208,8 @@ func (config *Config) RetrieveSafe(fields ...Field) *Config {
 			cfg.AutoUpdateMajor = config.AutoUpdateMajor
 		case AutoUpdatePatch:
 			cfg.AutoUpdatePatch = config.AutoUpdatePatch
+		case AutoBrowserOpen:
+			cfg.AutoBrowserOpen = config.AutoBrowserOpen
 		}
 	}
 

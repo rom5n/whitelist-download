@@ -33,11 +33,11 @@ jobs:
           - os: darwin
             runner: macos-latest
             arch: amd64
-            binary_name: wl-download-mac-amd64
+            binary_name: wl-download-darwin-amd64
           - os: darwin
             runner: macos-latest
             arch: arm64
-            binary_name: wl-download-mac-arm64
+            binary_name: wl-download-darwin-arm64
 
     steps:
       - name: Checkout Code

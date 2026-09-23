@@ -19,6 +19,7 @@ jobs:
     name: Build on ${{ matrix.os }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows
@@ -26,7 +27,7 @@ jobs:
             arch: amd64
             binary_name: wl-download-windows.exe
           - os: linux
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
             arch: amd64
             binary_name: wl-download-linux
           - os: darwin
@@ -49,6 +50,8 @@ jobs:
 
       - name: Build Frontend
         working-directory: ./frontend
+        env:
+          CI: false
         run: |
           yarn install
           yarn build
@@ -67,11 +70,16 @@ jobs:
       - name: Build Backend
         working-directory: ./backend
         env:
-          CGO_ENABLED: 1
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
         shell: bash
         run: |
+          # Disable CGO on Windows, Enable on Mac/Linux
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            export CGO_ENABLED=0
+          else
+            export CGO_ENABLED=1
+          fi
           # Get version from input (manual) or tag (push)
           RAW_VERSION="${{ github.event.inputs.version || github.ref_name }}"
           # Strip 'v' prefix for the binary internal version variable

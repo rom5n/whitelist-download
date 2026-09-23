@@ -31,7 +31,7 @@ jobs:
             arch: amd64
             binary_name: wl-download-linux
           - os: darwin
-            runner: macos-13
+            runner: macos-latest
             arch: amd64
             binary_name: wl-download-mac-amd64
           - os: darwin

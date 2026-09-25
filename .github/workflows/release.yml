@@ -59,7 +59,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23.x'
+          go-version-file: go.mod
 
       - name: Install Linux Dependencies
         if: matrix.os == 'linux'

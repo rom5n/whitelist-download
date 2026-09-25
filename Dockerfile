@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN yarn build
 
 # Stage 2: Build Backend
-FROM golang:1.23-alpine AS backend-builder
+FROM golang:1.26-alpine AS backend-builder
 WORKDIR /app
 
 # Copy go.mod and go.sum

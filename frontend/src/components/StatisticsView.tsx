@@ -8,7 +8,7 @@ interface StatisticsViewProps {
 
 export default function StatisticsView({ stats }: StatisticsViewProps) {
   const { t } = useTranslation();
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -17,7 +17,7 @@ export default function StatisticsView({ stats }: StatisticsViewProps) {
 
   if (!stats) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-[var(--color-bg-primary)] p-6">
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="w-10 h-10 border-3 border-[var(--color-border)] border-t-accent rounded-full animate-spin"></div>
       </div>
     );
@@ -59,7 +59,7 @@ export default function StatisticsView({ stats }: StatisticsViewProps) {
   const numCountries = stats.configs_by_country ? Object.keys(stats.configs_by_country).length : 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[var(--color-bg-primary)] p-6 md:p-10 relative overflow-y-auto custom-scrollbar">
+    <div className="flex-1 flex flex-col h-full p-6 md:p-10 relative overflow-y-auto custom-scrollbar">
       <div className="w-full max-w-4xl mx-auto flex flex-col animate-[fade-in_0.3s_ease-out]">
         
         <div className="mb-10">

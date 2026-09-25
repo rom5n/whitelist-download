@@ -61,9 +61,9 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.title': 'Settings',
     'settings.subtitle': 'Configure your whitelist download server parameters.',
     'settings.loading': 'Loading settings...',
+    'settings.loadError': 'Failed to load settings',
     'settings.general': 'General',
     'settings.network': 'Network',
-    'settings.files': 'Files',
     'settings.timing': 'Timing',
     'settings.sources': 'Sources',
     'settings.appName': 'Application Name',
@@ -72,26 +72,18 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.port': 'Port',
     'settings.forcedIp': 'Forced IP',
     'settings.subPath': 'Subscription Path',
-    'settings.configsPath': 'Configs Path',
-    'settings.logsPath': 'Logs Path',
     'settings.interval': 'Update Interval (min)',
     'settings.sourcePlaceholder': 'Enter URL...',
     'settings.addSource': 'Add Source',
     'settings.removeSource': 'Remove',
     'settings.levelNormalDesc': 'Checking configurations using server ping [Fast]',
     'settings.levelUltraDesc': 'Checking configurations using sing-box core, better than ping, but filters out more configurations that might have been working [Slow]',
-    'settings.save': 'Save',
-    'settings.saving': 'Saving...',
-    'settings.saved': 'Saved!',
-    'settings.saveError': 'Error',
-    'settings.restartRequired': 'Restart required',
     'settings.close': 'Close',
     'settings.updateConfigs': 'Update Configurations',
     'settings.restartServer': 'Restart Server',
     'settings.workingLevel': 'Working Check Level',
     'settings.levelNormal': 'Normal',
     'settings.levelUltra': 'Ultra',
-    'settings.unsavedChanges': 'Unsaved changes',
     'settings.updates': 'Updates',
     'settings.autoUpdateMajor': 'Auto-download major updates',
     'settings.autoUpdatePatch': 'Auto-download bug fixes & improvements',
@@ -115,6 +107,7 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.aggregated': 'Aggregated subscription',
     'sidebar.unknown': 'Unknown',
     'sidebar.loading': 'Loading...',
+    'sidebar.loadError': 'Failed to load configs',
     
     'details.globalSub': 'Global Subscription',
     'details.sub': 'Subscription',
@@ -138,6 +131,50 @@ const translations: Record<Language, Record<string, string>> = {
     'time.days': 'd',
     'time.hours': 'h',
     'time.minutes': 'm',
+
+    // Save status (header slot)
+    'status.saved': 'All changes saved',
+    'status.saving': 'Saving changes…',
+    'status.restart': 'Restart required',
+    'status.error': 'Not saved — retry',
+    'status.invalid': 'Fix errors to save',
+
+    // Update interval
+    'interval.errNumber': 'Enter a whole number of minutes',
+    'interval.errMin': 'Minimum is {min} minutes',
+    'interval.errMax': 'Maximum is {max} minutes (24 hours)',
+    'interval.presets': 'Quick values',
+    'time.min': '{n} min',
+    'time.hour': '{n} h',
+
+    // Country select
+    'country.all': 'All countries',
+    'country.loading': 'Loading…',
+    'country.error': 'Failed to load countries',
+    'country.retry': 'Retry',
+    'country.empty': 'No configs yet',
+    'country.select': 'Country',
+
+    // Import configs
+    'import.title': 'Import configs',
+    'import.description': 'Download configs as a .txt file, one link per line.',
+    'import.count': 'Count',
+    'import.countPlaceholder': 'All',
+    'import.offset': 'Offset',
+    'import.offsetHint': 'How many configs to skip from the start of the selection',
+    'import.available': 'Available: {n}',
+    'import.fileName': 'File name',
+    'import.resetName': 'Generate from filters',
+    'import.download': 'Download',
+    'import.downloading': 'Downloading…',
+    'import.done': 'Downloaded: {n}',
+    'import.empty': 'No configs match these filters',
+    'import.error': 'Failed to download configs. Check that the server is running and try again.',
+    'import.errInteger': 'Only whole numbers',
+    'import.errCountMin': 'At least 1',
+    'import.errCountMax': 'No more than {max}',
+    'import.errOffsetMax': 'Only {total} configs available — this offset skips all of them',
+    'import.errFileName': 'Enter a file name',
   },
   ru: {
     // Header
@@ -195,9 +232,9 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.title': 'Настройки',
     'settings.subtitle': 'Настройте параметры вашего сервера.',
     'settings.loading': 'Загрузка настроек...',
+    'settings.loadError': 'Не удалось загрузить настройки',
     'settings.general': 'Основные',
     'settings.network': 'Сеть',
-    'settings.files': 'Файлы',
     'settings.timing': 'Таймеры',
     'settings.sources': 'Источники',
     'settings.appName': 'Название приложения',
@@ -206,26 +243,18 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.port': 'Порт',
     'settings.forcedIp': 'Принудительный IP',
     'settings.subPath': 'Путь подписки',
-    'settings.configsPath': 'Путь к конфигам',
-    'settings.logsPath': 'Путь к логам',
     'settings.interval': 'Интервал обновления (мин)',
     'settings.sourcePlaceholder': 'Введите ссылку...',
     'settings.addSource': 'Добавить источник',
     'settings.removeSource': 'Удалить',
     'settings.levelNormalDesc': 'Проверка конфигураций с помощью пинга сервера [Быстро]',
     'settings.levelUltraDesc': 'Проверка конфигураций с помощью ядра sing-box, лучше пинга, но отсеивает больше конфигураций, которые могли быть рабочими [Медленно]',
-    'settings.save': 'Сохранить',
-    'settings.saving': 'Сохранение...',
-    'settings.saved': 'Сохранено!',
-    'settings.saveError': 'Ошибка',
-    'settings.restartRequired': 'Требуется рестарт',
     'settings.close': 'Закрыть',
     'settings.updateConfigs': 'Обновить конфигурации',
     'settings.restartServer': 'Перезагрузить сервер',
     'settings.workingLevel': 'Уровень проверки конфигов',
     'settings.levelNormal': 'Обычный',
     'settings.levelUltra': 'Ультра',
-    'settings.unsavedChanges': 'Не сохранено',
     'settings.updates': 'Обновления',
     'settings.autoUpdateMajor': 'Автоматически скачивать крупные обновления',
     'settings.autoUpdatePatch': 'Автоматически скачивать исправления багов и улучшения',
@@ -249,6 +278,7 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.aggregated': 'Объединенная подписка',
     'sidebar.unknown': 'Неизвестно',
     'sidebar.loading': 'Загрузка...',
+    'sidebar.loadError': 'Не удалось загрузить конфиги',
     
     'details.globalSub': 'Глобальная подписка',
     'details.sub': 'Подписка',
@@ -272,6 +302,50 @@ const translations: Record<Language, Record<string, string>> = {
     'time.days': 'д',
     'time.hours': 'ч',
     'time.minutes': 'м',
+
+    // Save status (header slot)
+    'status.saved': 'Все изменения сохранены',
+    'status.saving': 'Сохранение изменений…',
+    'status.restart': 'Требуется рестарт',
+    'status.error': 'Не сохранено — повторить',
+    'status.invalid': 'Исправьте ошибки',
+
+    // Update interval
+    'interval.errNumber': 'Введите целое число минут',
+    'interval.errMin': 'Минимум {min} минут',
+    'interval.errMax': 'Максимум {max} минут (24 часа)',
+    'interval.presets': 'Быстрые значения',
+    'time.min': '{n} мин',
+    'time.hour': '{n} ч',
+
+    // Country select
+    'country.all': 'Все страны',
+    'country.loading': 'Загрузка…',
+    'country.error': 'Не удалось загрузить страны',
+    'country.retry': 'Повторить',
+    'country.empty': 'Конфигов пока нет',
+    'country.select': 'Страна',
+
+    // Import configs
+    'import.title': 'Импорт конфигов',
+    'import.description': 'Скачайте конфиги в .txt файле, по одной ссылке в строке.',
+    'import.count': 'Количество',
+    'import.countPlaceholder': 'Все',
+    'import.offset': 'Оффсет',
+    'import.offsetHint': 'Сколько конфигов пропустить с начала выборки',
+    'import.available': 'Доступно: {n}',
+    'import.fileName': 'Имя файла',
+    'import.resetName': 'Сгенерировать по фильтрам',
+    'import.download': 'Скачать',
+    'import.downloading': 'Скачивание…',
+    'import.done': 'Скачано: {n}',
+    'import.empty': 'По выбранным фильтрам конфигов не найдено',
+    'import.error': 'Не удалось скачать конфиги. Проверьте, что сервер запущен, и попробуйте ещё раз.',
+    'import.errInteger': 'Только целые числа',
+    'import.errCountMin': 'Минимум 1',
+    'import.errCountMax': 'Не больше {max}',
+    'import.errOffsetMax': 'Доступно всего {total} — такой оффсет пропускает все конфиги',
+    'import.errFileName': 'Введите имя файла',
   },
 };
 
@@ -279,7 +353,8 @@ const translations: Record<Language, Record<string, string>> = {
 interface I18nContextValue {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: string) => string;
+  /** Translates a key; "{name}" placeholders are replaced with params */
+  t: (key: string, params?: Record<string, string | number>) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | undefined>(undefined);
@@ -301,8 +376,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** Translates a key to the current language; returns the key itself if not found */
-  const t = useCallback((key: string): string => {
-    return translations[language][key] || key;
+  const t = useCallback((key: string, params?: Record<string, string | number>): string => {
+    const text = translations[language][key] || key;
+    if (!params) return text;
+    return text.replace(/\{(\w+)\}/g, (match, name: string) => (name in params ? String(params[name]) : match));
   }, [language]);
 
   return (

@@ -1,3 +1,5 @@
+import { emojiToCountryCode } from './flags';
+
 /**
  * TypeScript interfaces matching the backend data models.
  * See: backend/domain/statistic.go and backend/config/config.go
@@ -7,6 +9,8 @@
 export interface Statistics {
   amount_configs: number;
   configs_by_country: Record<string, number>;
+  /** Country name → ISO 3166-1 alpha-2 code. Missing in responses of older backends */
+  country_codes?: Record<string, string>;
   last_update: number;
   up_at: number;
   update_interval: number;
@@ -24,8 +28,6 @@ export interface AppConfig {
   subscription_title: string;
   description_text: string;
   port: string;
-  configs_path: string;
-  logs_path: string;
   subscription_path: string;
   update_interval_minutes: number;
   sources: string[];
@@ -34,7 +36,18 @@ export interface AppConfig {
   auto_update_major: boolean;
   auto_update_patch: boolean;
   auto_browser_open: boolean;
+  /** Managed from the tray menu; the backend ignores it on save */
+  auto_start?: boolean;
 }
+
+/** Settings that were saved but apply only after a restart. GET /api/restart-status */
+export interface RestartStatus {
+  restart_required: boolean;
+  fields: (keyof AppConfig)[];
+}
+
+/** Limits of the update interval, must match backend/config */
+export const UPDATE_INTERVAL = { min: 5, max: 1440, default: 15 } as const;
 
 export interface UpdaterState {
   status: 'checking' | 'available' | 'downloading' | 'installing' | 'reload' | 'up-to-date' | 'error';
@@ -59,13 +72,14 @@ export async function fetchStatistics(): Promise<Statistics> {
  * Fetches the list of VLESS configurations.
  * Endpoint: GET /api/configs
  */
-export async function fetchConfigs(country?: string, offset: number = 1, limit: number = 0): Promise<ConfigsResponse> {
+export async function fetchConfigs(country?: string | null, offset: number = 1, limit: number = 0, signal?: AbortSignal): Promise<ConfigsResponse> {
   const params = new URLSearchParams();
+  // The exact country name is resolved by the backend (slugs like "united-states" work too)
   if (country) params.set('country', country);
   if (offset > 1) params.set('offset', offset.toString());
   if (limit > 0) params.set('limit', limit.toString());
   
-  const res = await fetch(`/api/configs?${params.toString()}`);
+  const res = await fetch(`/api/configs?${params.toString()}`, { signal });
   if (!res.ok) throw new Error('Failed to fetch configs');
   return res.json();
 }
@@ -97,13 +111,24 @@ export async function fetchConfig(): Promise<AppConfig> {
  * @param config - The full config object to save
  * @returns true if save succeeded
  */
-export async function saveConfig(config: AppConfig): Promise<boolean> {
+export async function saveConfig(config: AppConfig): Promise<RestartStatus> {
   const res = await fetch('/api/set-config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   });
-  return res.ok;
+  if (!res.ok) throw new Error((await res.text()).trim() || 'Failed to save config');
+  return res.json();
+}
+
+/**
+ * Fetches which saved settings still wait for a restart.
+ * Endpoint: GET /api/restart-status
+ */
+export async function fetchRestartStatus(): Promise<RestartStatus> {
+  const res = await fetch('/api/restart-status');
+  if (!res.ok) throw new Error('Failed to fetch restart status');
+  return res.json();
 }
 
 /**
@@ -171,8 +196,19 @@ export interface ParsedConfig {
   params: URLSearchParams;
   name: string;
   flag: string;
+  /** ISO code derived from the flag emoji, null if unknown */
+  countryCode: string | null;
   country: string;
   sequence: string;
+}
+
+/**
+ * Stable identity of a config: the link without its "#name" part.
+ * Names contain a sequence number that changes between updates, the rest doesn't.
+ */
+export function configKey(rawLink: string): string {
+  const hashIndex = rawLink.indexOf('#');
+  return hashIndex === -1 ? rawLink : rawLink.slice(0, hashIndex);
 }
 
 export function parseVlessString(rawLink: string): ParsedConfig | null {
@@ -206,7 +242,7 @@ export function parseVlessString(rawLink: string): ParsedConfig | null {
       country = name;
     }
 
-    return { protocol, uuid, ip, port, params, name, flag, country, sequence };
+    return { protocol, uuid, ip, port, params, name, flag, countryCode: emojiToCountryCode(flag), country, sequence };
   } catch {
     return null;
   }

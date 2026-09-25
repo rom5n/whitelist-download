@@ -23,6 +23,23 @@
   --animate-star-drift-slow: star-drift 120s linear infinite;
   --animate-star-drift-slower: star-drift 180s linear infinite;
   --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+
+  /* Radii */
+  --radius-porthole: 2.25rem;     /* right pane: soft "airplane window" shape */
+  --radius-porthole-sm: 1.5rem;   /* same pane on narrow screens */
+  --radius-field: 0.75rem;        /* inputs, buttons (rounded-xl) */
+  --radius-chip: 9999px;
+
+  /* Spacing */
+  --spacing-shell-gap: 0.75rem;   /* gap between the shell (header + sidebar) and the pane */
+
+  /* Timings */
+  --duration-glow-in: 150ms;
+  --duration-glow-out: 450ms;
+  --duration-crossfade: 180ms;
+  --duration-overlay: 320ms;
+  --duration-fade-mask: 200ms;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes fade-in {
@@ -66,6 +83,13 @@ body {
 /* === Dark Theme (default) === */
 .dark {
   color-scheme: dark;
+  --color-shell: #111118;         /* header + sidebar: one continuous surface */
+  --color-pane: #0a0a0f;          /* rounded right pane */
+  --shadow-pane: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 12px 40px rgba(0, 0, 0, 0.45);
+  --color-glow-ring: rgba(96, 165, 250, 0.9);
+  --color-glow-soft: rgba(59, 130, 246, 0.35);
+  --color-restart-ring: rgba(245, 158, 11, 0.85);
+  --color-restart-soft: rgba(245, 158, 11, 0.28);
   --color-bg-primary: #0a0a0f;
   --color-bg-secondary: #111118;
   --color-bg-card: #16161f;
@@ -85,6 +109,13 @@ body {
 /* === Light Theme === */
 .light {
   color-scheme: light;
+  --color-shell: #eeeef0;
+  --color-pane: #f7f7f9;
+  --shadow-pane: 0 0 0 1px rgba(0, 0, 0, 0.02), 0 10px 32px rgba(17, 17, 24, 0.08);
+  --color-glow-ring: rgba(37, 99, 235, 0.8);
+  --color-glow-soft: rgba(59, 130, 246, 0.25);
+  --color-restart-ring: rgba(217, 119, 6, 0.85);
+  --color-restart-soft: rgba(245, 158, 11, 0.22);
   --color-bg-primary: #f5f5f7;
   --color-bg-secondary: #eeeef0;
   --color-bg-card: #ffffff;
@@ -168,4 +199,128 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--color-glass-border);
+}
+/* === Right pane ("porthole") === */
+.porthole {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--radius-porthole-sm);
+  background: var(--color-pane);
+  box-shadow: var(--shadow-pane);
+}
+@media (min-width: 768px) {
+  .porthole {
+    border-radius: var(--radius-porthole);
+  }
+}
+
+/* Glow along the pane edge when a config is picked. Follows the pane radius via inherit.
+   Only opacity and transform are animated. 25% = glow-in / (glow-in + glow-out). */
+.pane-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1.5px var(--color-glow-ring),
+    inset 0 0 28px 2px var(--color-glow-soft);
+  opacity: 0;
+  will-change: opacity, transform;
+  animation: pane-glow calc(var(--duration-glow-in) + var(--duration-glow-out)) linear both;
+}
+@keyframes pane-glow {
+  0% { opacity: 0; transform: scale(0.992); animation-timing-function: ease-out; }
+  25% { opacity: 1; transform: scale(1); animation-timing-function: var(--ease-out-soft); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* "Restart required" highlight of the whole browser window.
+   A fixed top-level overlay: not clipped by any overflow, drawn above the header, square corners. */
+.restart-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 2px var(--color-restart-ring),
+    inset 0 0 36px 4px var(--color-restart-soft);
+  opacity: 0;
+  transition: opacity var(--duration-overlay) var(--ease-out-soft);
+}
+.restart-glow[data-visible="true"] {
+  opacity: 1;
+}
+
+/* Status slot: every state is stacked in one grid cell, so the slot always
+   reserves the width of the longest text and switching states never shifts the layout. */
+.status-stack {
+  display: inline-grid;
+}
+.status-stack > * {
+  grid-area: 1 / 1;
+  transition: opacity var(--duration-crossfade) ease;
+}
+.status-stack > [data-active="false"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* === Scroll area with fading edges (only where content is hidden) === */
+@property --fade-top {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-bottom {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.fade-scroll {
+  --fade-size: 2rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+  transition: --fade-top var(--duration-fade-mask) ease, --fade-bottom var(--duration-fade-mask) ease;
+}
+.fade-scroll[data-fade-top="true"] {
+  --fade-top: var(--fade-size);
+}
+.fade-scroll[data-fade-bottom="true"] {
+  --fade-bottom: var(--fade-size);
+}
+
+/* Hide native number spinners everywhere */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Flag images keep their aspect ratio and never stretch */
+.flag-img {
+  display: inline-block;
+  object-fit: cover;
+  border-radius: 0.2rem;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-glow {
+    animation: none;
+    display: none;
+  }
+  .restart-glow,
+  .status-stack > *,
+  .fade-scroll {
+    transition: none;
+  }
 }

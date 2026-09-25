@@ -92,7 +92,7 @@ export default function LogsView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[var(--color-bg-primary)] p-6 md:p-10 relative">
+    <div className="flex-1 flex flex-col h-full p-6 md:p-10 relative">
       <div className="w-full h-full flex flex-col animate-[fade-in_0.3s_ease-out]">
 
         <div className="flex-1 flex flex-col overflow-hidden">

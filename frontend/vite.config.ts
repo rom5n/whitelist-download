@@ -14,5 +14,7 @@ export default defineConfig({
   build: {
     outDir: '../backend/http/dist',
     emptyOutDir: true,
+    // Flags stay separate files loaded on demand instead of being inlined into the JS bundle
+    assetsInlineLimit: (filePath: string) => (filePath.includes('flag-icons') ? false : undefined),
   }
 })

@@ -1,22 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { triggerUpdaterDownload, type UpdaterState } from '../api';
 import { useTranslation } from '../i18n';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 export default function UpdateView({ updaterState }: { updaterState: UpdaterState | null }) {
-  const [downloading, setDownloading] = useState(false);
+  const [downloadRequested, setDownloading] = useState(false);
   const { t } = useTranslation();
 
-  useEffect(() => {
-    if (updaterState && updaterState.status !== 'available' && updaterState.status !== 'downloading') {
-      setDownloading(false);
-    }
-  }, [updaterState]);
+  // A requested download only matters until the updater moves past the "available"/"downloading" states
+  const downloading = downloadRequested && (updaterState?.status === 'available' || updaterState?.status === 'downloading');
 
   if (!updaterState) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[var(--color-bg-primary)] p-6">
+      <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-[var(--color-text-muted)] animate-pulse">{t('settings.loading')}</div>
       </div>
     );
@@ -28,7 +25,7 @@ export default function UpdateView({ updaterState }: { updaterState: UpdaterStat
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[var(--color-bg-primary)] p-6 md:p-10 relative flex justify-center">
+    <div className="flex-1 overflow-y-auto p-6 md:p-10 relative flex justify-center">
       <div className="w-full max-w-3xl space-y-8 animate-[fade-in_0.3s_ease-out]">
         
         <div className="bg-[var(--color-bg-input)] rounded-2xl p-6 border border-[var(--color-border)] shadow-sm mt-8">

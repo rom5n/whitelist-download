@@ -1,10 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from '../i18n';
-import { fetchConfig, saveConfig, updateConfigs, restartServer, type AppConfig } from '../api';
+import { updateConfigs, UPDATE_INTERVAL, type AppConfig } from '../api';
+import type { SettingsState } from '../hooks/useSettings';
+import type { LoadStatus } from '../hooks/useStatistics';
+import type { CountryOption } from './CountrySelect';
+import FadeScroll from './FadeScroll';
+import ImportConfigs from './ImportConfigs';
+import Spinner from './Spinner';
 
-const RESTART_FIELDS: (keyof AppConfig)[] = [
-  'port', 'logs_path', 'subscription_path', 'app_name',
-];
+const INTERVAL_PRESETS = [5, 15, 30, 60, 180, 360, 720, 1440];
+const WHOLE_NUMBER = /^\d+$/;
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -16,147 +21,210 @@ function SectionDivider({ label }: { label: string }) {
   );
 }
 
-interface SettingsViewProps {
-  version: string | undefined;
+/** Renders all labels in one grid cell and shows the active one: the element never changes its width */
+function StableLabel<K extends string>({ labels, active }: { labels: Record<K, ReactNode>; active: K }) {
+  return (
+    <span className="status-stack">
+      {(Object.keys(labels) as K[]).map(key => (
+        <span key={key} data-active={key === active} aria-hidden={key !== active} className="flex items-center justify-center gap-2">
+          {labels[key]}
+        </span>
+      ))}
+    </span>
+  );
 }
 
-export default function SettingsView({ version }: SettingsViewProps) {
-  const { t } = useTranslation();
-  const [config, setConfig] = useState<AppConfig | null>(null);
-  const [original, setOriginal] = useState<AppConfig | null>(null);
-  const [newSource, setNewSource] = useState('');
-  const [saveText, setSaveText] = useState('');
-  
-  const [updateActionText, setUpdateActionText] = useState('');
-  const [restartActionText, setRestartActionText] = useState('');
+function validateInterval(text: string): { value: number | null; error: string | null; params?: Record<string, number> } {
+  const trimmed = text.trim();
+  if (!WHOLE_NUMBER.test(trimmed)) return { value: null, error: 'interval.errNumber' };
+  const value = Number(trimmed);
+  if (value < UPDATE_INTERVAL.min) return { value: null, error: 'interval.errMin', params: { min: UPDATE_INTERVAL.min } };
+  if (value > UPDATE_INTERVAL.max) return { value: null, error: 'interval.errMax', params: { max: UPDATE_INTERVAL.max } };
+  return { value, error: null };
+}
 
-  useEffect(() => {
-    fetchConfig().then(data => {
-      setConfig(data);
-      setOriginal(data);
-    }).catch(console.error);
-  }, []);
+function validatePort(text: string): boolean {
+  const trimmed = text.trim();
+  return WHOLE_NUMBER.test(trimmed) && Number(trimmed) >= 1 && Number(trimmed) <= 65535;
+}
+
+interface SettingsViewProps {
+  version: string | undefined;
+  settings: SettingsState;
+  countries: CountryOption[];
+  countriesStatus: LoadStatus;
+  onRetryCountries: () => void;
+  totalCount: number;
+}
+
+export default function SettingsView({ version, settings, countries, countriesStatus, onRetryCountries, totalCount }: SettingsViewProps) {
+  const { t } = useTranslation();
+  const { config, loadError, reload } = settings;
+
+  if (loadError) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+        <p className="text-danger">{t('settings.loadError')}</p>
+        <button type="button" onClick={reload} className="px-4 py-2 rounded-xl text-sm font-medium text-accent hover:bg-accent/10 cursor-pointer">
+          {t('country.retry')}
+        </button>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
+          <Spinner />
+          {t('settings.loading')}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <SettingsForm
+      config={config}
+      version={version}
+      settings={settings}
+      countries={countries}
+      countriesStatus={countriesStatus}
+      onRetryCountries={onRetryCountries}
+      totalCount={totalCount}
+    />
+  );
+}
+
+interface SettingsFormProps extends SettingsViewProps {
+  config: AppConfig;
+}
+
+function SettingsForm({ config, version, settings, countries, countriesStatus, onRetryCountries, totalCount }: SettingsFormProps) {
+  const { t } = useTranslation();
+  const { update, setFieldInvalid, restart, restartServerAndWait, isRestarting } = settings;
+  const ids = { interval: useId(), port: useId() };
+
+  const [newSource, setNewSource] = useState('');
+  const [intervalText, setIntervalText] = useState(String(config.update_interval_minutes));
+  const [portText, setPortText] = useState(config.port);
+  const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
+
+  // A draft left invalid must not block saving after the form is closed
+  useEffect(() => () => {
+    setFieldInvalid('update_interval_minutes', false);
+    setFieldInvalid('port', false);
+  }, [setFieldInvalid]);
+
+  const intervalCheck = validateInterval(intervalText);
+  const portValid = validatePort(portText);
 
   const isNewSourceValid = useMemo(() => {
-    if (!newSource || !config) return false;
-    const sources = config.sources || [];
-    if (sources.includes(newSource)) return false;
+    if (!newSource) return false;
+    if ((config.sources || []).includes(newSource)) return false;
     try {
       new URL(newSource);
       return true;
     } catch {
       return false;
     }
-  }, [newSource, config]);
+  }, [newSource, config.sources]);
 
-  if (!config) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-[var(--color-bg-primary)] p-6">
-        <div className="text-[var(--color-text-muted)] animate-pulse">{t('settings.loading')}</div>
-      </div>
-    );
-  }
+  const needsRestart = (field: keyof AppConfig) => restart?.fields.includes(field) ?? false;
 
-  const isModified = (field: keyof AppConfig) =>
-    original && JSON.stringify(config[field]) !== JSON.stringify(original[field]);
-
-  const needsRestart = (field: keyof AppConfig) =>
-    isModified(field) && RESTART_FIELDS.includes(field);
-
-  const inputCls = (field: keyof AppConfig) =>
-    `w-full px-4 py-3 rounded-xl text-sm bg-[var(--color-bg-input)] text-[var(--color-text-primary)] outline-none transition-all duration-200 border ${needsRestart(field)
-      ? 'border-warn bg-warn/5'
-      : isModified(field)
-        ? 'border-accent/50'
-        : 'border-[var(--color-border)] focus:border-accent focus:ring-2 focus:ring-accent/20'
+  const inputCls = (field: keyof AppConfig, invalid = false) =>
+    `w-full px-4 py-3 rounded-xl text-sm bg-[var(--color-bg-input)] text-[var(--color-text-primary)] outline-none transition-colors duration-200 border ${
+      invalid
+        ? 'border-danger/60 focus:border-danger focus:ring-2 focus:ring-danger/20'
+        : needsRestart(field)
+          ? 'border-warn bg-warn/5 focus:ring-2 focus:ring-warn/20'
+          : 'border-[var(--color-border)] focus:border-accent focus:ring-2 focus:ring-accent/20'
     }`;
+  const labelCls = 'block text-sm font-medium text-[var(--color-text-secondary)] mb-2';
+  const hintCls = (isError: boolean) => `min-h-5 mt-1.5 text-xs ${isError ? 'text-danger' : 'text-[var(--color-text-muted)]'}`;
 
-  const updateField = (field: keyof AppConfig, value: string | number | boolean) => {
-    setConfig({ ...config, [field]: value });
+  const changeInterval = (text: string) => {
+    setIntervalText(text);
+    const check = validateInterval(text);
+    setFieldInvalid('update_interval_minutes', check.error !== null);
+    if (check.value !== null && check.value !== config.update_interval_minutes) {
+      update({ update_interval_minutes: check.value });
+    }
   };
 
-  const handleSave = async () => {
-    if (!config) return;
-    setSaveText(t('settings.saving'));
-    const ok = await saveConfig(config);
-    setSaveText(ok ? t('settings.saved') : t('settings.saveError'));
-    if (ok) setOriginal(config);
-    setTimeout(() => setSaveText(''), 2000);
+  const changePort = (text: string) => {
+    setPortText(text);
+    const valid = validatePort(text);
+    setFieldInvalid('port', !valid);
+    if (valid) update({ port: text.trim() });
   };
 
   const handleUpdateConfigs = async () => {
-    setUpdateActionText(t('control.updating'));
-    const ok = await updateConfigs();
-    setUpdateActionText(ok ? t('control.success') : t('control.error'));
-    setTimeout(() => setUpdateActionText(''), 2000);
+    setUpdateState('updating');
+    let ok = false;
+    try {
+      ok = await updateConfigs();
+    } catch (err) {
+      console.error(err);
+    }
+    setUpdateState(ok ? 'success' : 'error');
+    window.setTimeout(() => setUpdateState('idle'), 2000);
   };
-
-  const handleRestart = async () => {
-    setRestartActionText(t('control.restarting'));
-    await restartServer();
-    // It closes connection so it might throw, we just let it be.
-    setTimeout(() => setRestartActionText(t('control.done')), 2000);
-  };
-
 
   const addSource = () => {
     if (isNewSourceValid) {
-      setConfig({ ...config, sources: [...(config.sources || []), newSource] });
+      update({ sources: [...(config.sources || []), newSource] });
       setNewSource('');
     }
   };
 
   const removeSource = (i: number) => {
-    const sources = config.sources || [];
-    setConfig({ ...config, sources: sources.filter((_, idx) => idx !== i) });
+    update({ sources: (config.sources || []).filter((_, idx) => idx !== i) });
   };
 
-  const restartBadge = (field: keyof AppConfig) =>
-    needsRestart(field)
-      ? <span className="text-[11px] text-warn mt-1.5 block font-medium">{t('settings.restartRequired')}</span>
-      : null;
-
-  const hasUnsavedChanges = original && JSON.stringify(config) !== JSON.stringify(original);
+  const formatPreset = (minutes: number) =>
+    minutes < 60 ? t('time.min', { n: minutes }) : t('time.hour', { n: minutes / 60 });
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[var(--color-bg-primary)] p-6 md:p-10 relative">
+    <div className="flex-1 overflow-y-auto p-6 md:p-10 relative">
       <div className="w-full space-y-8 animate-[fade-in_0.3s_ease-out]">
-        
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          {hasUnsavedChanges ? (
-            <div className="flex items-center gap-3 animate-[fade-in_0.2s_ease-out]">
-              <div className="flex items-center gap-2 text-warn bg-warn/10 px-4 py-2 rounded-xl border border-warn/20 w-fit">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 shrink-0">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <span className="text-sm font-medium">{t('settings.unsavedChanges')}</span>
-              </div>
-              <button
-                onClick={handleSave}
-                className={`px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer border-none
-                            transition-colors shadow-md
-                            ${saveText === t('settings.saved')
-                    ? 'bg-success text-white'
-                    : saveText === t('settings.saveError')
-                      ? 'bg-danger text-white'
-                      : 'bg-accent text-white hover:bg-accent-hover hover:shadow-accent/30'}`}
-              >
-                {saveText || t('settings.save')}
-              </button>
-            </div>
-          ) : <div />}
+          <h2 className="text-2xl font-bold text-[var(--color-text-primary)] tracking-tight">{t('settings.title')}</h2>
           <div className="flex gap-3 shrink-0">
             <button
+              type="button"
               onClick={handleUpdateConfigs}
-              className="px-5 py-2.5 rounded-xl text-sm font-medium border border-[var(--color-border)] hover:border-accent hover:text-accent bg-[var(--color-bg-card)] cursor-pointer transition-colors"
+              disabled={updateState === 'updating'}
+              className="px-5 py-2.5 rounded-xl text-sm font-medium border border-[var(--color-border)] hover:border-accent hover:text-accent bg-[var(--color-bg-card)] cursor-pointer transition-colors disabled:cursor-progress"
             >
-              {updateActionText || t('settings.updateConfigs')}
+              <StableLabel
+                active={updateState}
+                labels={{
+                  idle: t('settings.updateConfigs'),
+                  updating: <><Spinner />{t('control.updating')}</>,
+                  success: <span className="text-success">{t('control.success')}</span>,
+                  error: <span className="text-danger">{t('control.error')}</span>,
+                }}
+              />
             </button>
             <button
-              onClick={handleRestart}
-              className="px-5 py-2.5 rounded-xl text-sm font-medium border border-[var(--color-border)] hover:border-warn hover:text-warn bg-[var(--color-bg-card)] cursor-pointer transition-colors"
+              type="button"
+              onClick={restartServerAndWait}
+              disabled={isRestarting}
+              className={`px-5 py-2.5 rounded-xl text-sm font-medium border cursor-pointer transition-colors disabled:cursor-progress ${
+                restart?.restart_required
+                  ? 'border-warn text-warn bg-warn/10 hover:bg-warn/20'
+                  : 'border-[var(--color-border)] hover:border-warn hover:text-warn bg-[var(--color-bg-card)]'
+              }`}
             >
-              {restartActionText || t('settings.restartServer')}
+              <StableLabel
+                active={isRestarting ? 'restarting' : 'idle'}
+                labels={{
+                  idle: t('settings.restartServer'),
+                  restarting: <><Spinner />{t('control.restarting')}</>,
+                }}
+              />
             </button>
           </div>
         </div>
@@ -167,48 +235,49 @@ export default function SettingsView({ version }: SettingsViewProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.appName')}</label>
+              <label className={labelCls}>{t('settings.appName')}</label>
               <input type="text" className={inputCls('app_name')} value={config.app_name}
-                onChange={e => updateField('app_name', e.target.value)} />
-              {restartBadge('app_name')}
+                onChange={e => update({ app_name: e.target.value })} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.subTitle')}</label>
+              <label className={labelCls}>{t('settings.subTitle')}</label>
               <input type="text" className={inputCls('subscription_title')} value={config.subscription_title}
-                onChange={e => updateField('subscription_title', e.target.value)} />
-              {restartBadge('subscription_title')}
+                onChange={e => update({ subscription_title: e.target.value })} />
             </div>
           </div>
 
           <div className="mb-5">
-            <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.description')}</label>
+            <label className={labelCls}>{t('settings.description')}</label>
             <input type="text" className={inputCls('description_text')} value={config.description_text}
-              onChange={e => updateField('description_text', e.target.value)} />
-            {restartBadge('description_text')}
+              onChange={e => update({ description_text: e.target.value })} />
           </div>
 
           <div className="mb-5">
-            <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.workingLevel')}</label>
-            <div className="flex items-center gap-4">
+            <label className={labelCls}>{t('settings.workingLevel')}</label>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="relative grid grid-cols-2 p-1 bg-[var(--color-bg-input)] rounded-xl w-max border border-[var(--color-border)] shrink-0">
-                <div 
-                  className={`absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] bg-[var(--color-bg-card)] rounded-lg shadow-sm transition-transform duration-300 ease-in-out border border-[var(--color-border)] ${config.working_check_level === 2 ? 'translate-x-full' : 'translate-x-0'}`} 
+                <div
+                  className={`absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] bg-[var(--color-bg-card)] rounded-lg shadow-sm transition-transform duration-300 ease-in-out border border-[var(--color-border)] ${config.working_check_level === 2 ? 'translate-x-full' : 'translate-x-0'}`}
                 />
                 <button
-                  onClick={() => updateField('working_check_level', 1)}
+                  type="button"
+                  onClick={() => update({ working_check_level: 1 })}
+                  aria-pressed={config.working_check_level === 1}
                   className={`relative z-10 px-6 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
-                    config.working_check_level === 1 
-                      ? 'text-accent' 
+                    config.working_check_level === 1
+                      ? 'text-accent'
                       : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
                   }`}
                 >
                   {t('settings.levelNormal')}
                 </button>
                 <button
-                  onClick={() => updateField('working_check_level', 2)}
+                  type="button"
+                  onClick={() => update({ working_check_level: 2 })}
+                  aria-pressed={config.working_check_level === 2}
                   className={`relative z-10 px-6 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
-                    config.working_check_level === 2 
-                      ? 'text-warn' 
+                    config.working_check_level === 2
+                      ? 'text-warn'
                       : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
                   }`}
                 >
@@ -225,78 +294,100 @@ export default function SettingsView({ version }: SettingsViewProps) {
           <SectionDivider label={t('settings.updates')} />
 
           <div className="flex flex-col gap-4 mb-8">
-            <label className="flex items-center gap-3 cursor-pointer w-max">
-              <input 
-                type="checkbox" 
-                checked={config.auto_update_major} 
-                onChange={e => updateField('auto_update_major', e.target.checked)}
-                className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
-              />
-              <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoUpdateMajor')}</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer w-max">
-              <input 
-                type="checkbox" 
-                checked={config.auto_update_patch} 
-                onChange={e => updateField('auto_update_patch', e.target.checked)}
-                className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
-              />
-              <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoUpdatePatch')}</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer w-max">
-              <input 
-                type="checkbox" 
-                checked={config.auto_browser_open} 
-                onChange={e => updateField('auto_browser_open', e.target.checked)}
-                className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
-              />
-              <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoBrowserOpen')}</span>
-            </label>
+            {([
+              ['auto_update_major', 'settings.autoUpdateMajor'],
+              ['auto_update_patch', 'settings.autoUpdatePatch'],
+              ['auto_browser_open', 'settings.autoBrowserOpen'],
+            ] as const).map(([field, label]) => (
+              <label key={field} className="flex items-center gap-3 cursor-pointer w-max max-w-full">
+                <input
+                  type="checkbox"
+                  checked={config[field]}
+                  onChange={e => update({ [field]: e.target.checked })}
+                  className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer shrink-0"
+                />
+                <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t(label)}</span>
+              </label>
+            ))}
           </div>
 
           {/* === Network === */}
           <SectionDivider label={t('settings.network')} />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-1 mb-4">
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.port')}</label>
-              <input type="text" className={inputCls('port')} value={config.port}
-                onChange={e => updateField('port', e.target.value)} />
-              {restartBadge('port')}
+              <label htmlFor={ids.port} className={labelCls}>{t('settings.port')}</label>
+              <input id={ids.port} type="text" inputMode="numeric" className={inputCls('port', !portValid)} value={portText}
+                aria-invalid={!portValid}
+                onChange={e => changePort(e.target.value)} />
+              <p className={hintCls(!portValid)}>{!portValid && '1 – 65535'}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.forcedIp')}</label>
+              <label className={labelCls}>{t('settings.forcedIp')}</label>
               <input type="text" className={inputCls('forced_ip')} value={config.forced_ip}
-                onChange={e => updateField('forced_ip', e.target.value)} />
-              {restartBadge('forced_ip')}
+                onChange={e => update({ forced_ip: e.target.value })} />
             </div>
           </div>
 
           <div className="mb-5">
-            <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.subPath')}</label>
+            <label className={labelCls}>{t('settings.subPath')}</label>
             <input type="text" className={inputCls('subscription_path')} value={config.subscription_path}
-              onChange={e => updateField('subscription_path', e.target.value)} />
-            {restartBadge('subscription_path')}
-          </div>
-
-          {/* === Files === */}
-          <SectionDivider label={t('settings.files')} />
-
-          <div className="mb-5">
-            <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.configsPath')}</label>
-            <input type="text" className={inputCls('configs_path')} value={config.configs_path}
-              onChange={e => updateField('configs_path', e.target.value)} />
-            {restartBadge('configs_path')}
+              onChange={e => update({ subscription_path: e.target.value })} />
           </div>
 
           {/* === Timing === */}
           <SectionDivider label={t('settings.timing')} />
 
           <div className="mb-5">
-            <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{t('settings.interval')}</label>
-            <input type="number" className={inputCls('update_interval_minutes')} value={config.update_interval_minutes}
-              onChange={e => updateField('update_interval_minutes', Number(e.target.value))} />
-            {restartBadge('update_interval_minutes')}
+            <label htmlFor={ids.interval} className={labelCls}>{t('settings.interval')}</label>
+            <div className="flex flex-col lg:flex-row lg:items-start gap-3">
+              <input
+                id={ids.interval}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                className={`${inputCls('update_interval_minutes', intervalCheck.error !== null)} lg:w-40 shrink-0 tabular-nums`}
+                value={intervalText}
+                aria-invalid={intervalCheck.error !== null}
+                aria-describedby={`${ids.interval}-hint`}
+                onChange={e => changeInterval(e.target.value)}
+              />
+              <div role="group" aria-label={t('interval.presets')} className="flex flex-wrap gap-2">
+                {INTERVAL_PRESETS.map(minutes => {
+                  const active = intervalCheck.value === minutes;
+                  return (
+                    <button
+                      key={minutes}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => changeInterval(String(minutes))}
+                      className={`px-3.5 py-2 rounded-full text-sm font-medium cursor-pointer transition-colors border ${
+                        active
+                          ? 'bg-accent/15 text-accent border-accent/40'
+                          : 'bg-[var(--color-bg-input)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-hover)]'
+                      }`}
+                    >
+                      {formatPreset(minutes)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <p id={`${ids.interval}-hint`} className={hintCls(intervalCheck.error !== null)}>
+              {intervalCheck.error && t(intervalCheck.error, intervalCheck.params)}
+            </p>
+          </div>
+
+          {/* === Import configs === */}
+          <SectionDivider label={t('import.title')} />
+
+          <div className="mb-5">
+            <ImportConfigs
+              countries={countries}
+              countriesStatus={countriesStatus}
+              onRetryCountries={onRetryCountries}
+              totalCount={totalCount}
+            />
           </div>
 
           {/* === Sources === */}
@@ -308,16 +399,17 @@ export default function SettingsView({ version }: SettingsViewProps) {
               value={newSource}
               onChange={e => setNewSource(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addSource()}
-              className={`flex-1 px-4 py-3 rounded-xl text-sm bg-[var(--color-bg-input)] text-[var(--color-text-primary)] outline-none transition-all cursor-text border ${
+              className={`flex-1 min-w-0 px-4 py-3 rounded-xl text-sm bg-[var(--color-bg-input)] text-[var(--color-text-primary)] outline-none transition-colors cursor-text border ${
                 !isNewSourceValid && newSource
                   ? 'border-red-500/50 focus:border-red-500/80 bg-red-500/5'
                   : 'border-[var(--color-border)] focus:border-accent focus:ring-2 focus:ring-accent/20'
               }`}
             />
             <button
+              type="button"
               onClick={addSource}
               disabled={!isNewSourceValid}
-              className={`px-6 py-3 rounded-xl text-sm font-medium border-none transition-colors shadow-md ${
+              className={`px-6 py-3 rounded-xl text-sm font-medium border-none transition-colors shadow-md shrink-0 ${
                 isNewSourceValid
                   ? 'bg-accent text-white hover:bg-accent-hover cursor-pointer'
                   : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)] cursor-not-allowed opacity-60'
@@ -326,26 +418,26 @@ export default function SettingsView({ version }: SettingsViewProps) {
               {t('settings.addSource')}
             </button>
           </div>
-          <div className="max-h-60 overflow-y-auto flex flex-col gap-2 rounded-xl">
-            {(config.sources || []).map((s, i) => (
-              <div key={i} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl
-                                      bg-[var(--color-bg-input)] border border-[var(--color-border)]">
-                <span className="text-sm text-[var(--color-text-primary)] overflow-hidden text-ellipsis whitespace-nowrap flex-1 font-mono">
-                  {s}
-                </span>
-                <button
-                  onClick={() => removeSource(i)}
-                  className="bg-transparent border-none text-red-400 font-medium text-sm cursor-pointer
-                             hover:text-red-300 transition-colors shrink-0"
-                >
-                  {t('settings.removeSource')}
-                </button>
-              </div>
-            ))}
-          </div>
-          {restartBadge('sources')}
+          <FadeScroll className="max-h-72 rounded-xl">
+            <ul className="flex flex-col gap-2">
+              {(config.sources || []).map((s, i) => (
+                <li key={s} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-[var(--color-bg-input)] border border-[var(--color-border)]">
+                  <span className="text-sm text-[var(--color-text-primary)] overflow-hidden text-ellipsis whitespace-nowrap flex-1 font-mono" title={s}>
+                    {s}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeSource(i)}
+                    className="bg-transparent border-none text-red-400 font-medium text-sm cursor-pointer hover:text-red-300 transition-colors shrink-0"
+                  >
+                    {t('settings.removeSource')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </FadeScroll>
         </div>
-        
+
         {version && (
           <div className="text-center mt-6">
             <a

@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { parseVlessString } from '../api';
 import { useTranslation } from '../i18n';
+import Flag from './Flag';
 
 interface DetailsViewProps {
   activeCountry: string | null;
-  activeConfigIndex: number | null;
-  configs: string[];
+  /** The selected config link, null for the aggregated subscription */
+  selectedConfig: string | null;
   baseSubLink: string;
   offset: number;
   limit: number;
@@ -17,8 +18,7 @@ interface DetailsViewProps {
 
 export default function DetailsView({
   activeCountry,
-  activeConfigIndex,
-  configs,
+  selectedConfig,
   baseSubLink,
   offset,
   limit,
@@ -29,7 +29,7 @@ export default function DetailsView({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
-  const activeConfigStr = activeConfigIndex !== null ? configs[activeConfigIndex] : null;
+  const activeConfigStr = selectedConfig;
   const parsedConfig = useMemo(() => {
     return activeConfigStr ? parseVlessString(activeConfigStr) : null;
   }, [activeConfigStr]);
@@ -79,10 +79,10 @@ export default function DetailsView({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[var(--color-bg-primary)] p-6 md:p-10 overflow-y-auto relative">
+    <div className="flex-1 flex flex-col h-full p-6 md:p-10 overflow-y-auto relative">
       <div className="max-w-2xl mx-auto w-full space-y-8 animate-[fade-in_0.3s_ease-out]">
         
-        {activeConfigIndex === null ? (
+        {activeConfigStr === null ? (
           <>
             <div className="text-center space-y-4">
               <h1 className="text-3xl font-bold text-[var(--color-text-primary)]">
@@ -102,12 +102,12 @@ export default function DetailsView({
                 )}
               </div>
               
-              <div className="w-full flex gap-2">
+              <div className="w-full flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   readOnly
                   value={subUrl}
-                  className="flex-1 bg-[var(--color-bg-input)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-4 py-3 rounded-xl outline-none font-mono text-sm"
+                  className="flex-1 min-w-0 bg-[var(--color-bg-input)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-4 py-3 rounded-xl outline-none font-mono text-sm"
                 />
                 <button
                   onClick={() => handleCopy(subUrl)}
@@ -154,9 +154,9 @@ export default function DetailsView({
         ) : parsedConfig ? (
           <>
             <div className="flex items-center gap-4 mb-6">
-              <div className="text-4xl drop-shadow-md">{parsedConfig.flag || '🏳️'}</div>
-              <div>
-                <h1 className="text-3xl font-bold text-[var(--color-text-primary)]">
+              <Flag code={parsedConfig.countryCode} label={parsedConfig.country || t('details.unknownLocation')} size="lg" />
+              <div className="min-w-0">
+                <h1 className="text-3xl font-bold text-[var(--color-text-primary)] break-all">
                   {parsedConfig.ip}
                 </h1>
                 <p className="text-[var(--color-text-secondary)]">
@@ -170,12 +170,12 @@ export default function DetailsView({
                 <QRCodeSVG value={activeConfigStr!} size={200} level="M" />
               </div>
               
-              <div className="w-full flex gap-2">
+              <div className="w-full flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   readOnly
                   value={activeConfigStr!}
-                  className="flex-1 bg-[var(--color-bg-input)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-4 py-3 rounded-xl outline-none font-mono text-sm"
+                  className="flex-1 min-w-0 bg-[var(--color-bg-input)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-4 py-3 rounded-xl outline-none font-mono text-sm"
                 />
                 <button
                   onClick={() => handleCopy(activeConfigStr!)}

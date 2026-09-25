@@ -3,7 +3,8 @@ import type { AppConfig } from './api';
 /** Maps a config field to the i18n key of its error message */
 export type ConfigErrors = Partial<Record<keyof AppConfig, string>>;
 
-const MAX_UPDATE_INTERVAL = 7 * 24 * 60;
+/** The longest update interval in minutes (one week), as config.MaxUpdateInterval on the backend */
+export const MAX_UPDATE_INTERVAL = 7 * 24 * 60;
 const SUBSCRIPTION_PATH = /^\/[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~-]+)*$/;
 const RESERVED_PATHS = ['api', 'assets'];
 
@@ -24,8 +25,6 @@ export function validateConfig(config: AppConfig): ConfigErrors {
   } else if (RESERVED_PATHS.includes(config.subscription_path.slice(1).split('/')[0])) {
     errors.subscription_path = 'settings.errSubPathReserved';
   }
-
-  if (!config.configs_path.trim()) errors.configs_path = 'settings.errRequired';
 
   const interval = config.update_interval_minutes;
   if (!Number.isInteger(interval) || interval < 1 || interval > MAX_UPDATE_INTERVAL) {

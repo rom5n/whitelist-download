@@ -16,7 +16,7 @@ export function NavTabs({ mode, onNavigate, attention = {} }: NavTabsProps) {
 
   return (
     <nav aria-label={t('nav.main')} className="hidden md:block">
-      <ul className="flex items-center gap-1 rounded-md border border-line bg-surface p-1 shadow-xs">
+      <ul className="flex items-center gap-1 rounded-md bg-bg p-1">
         {navItems.map(({ mode: itemMode, labelKey, icon: Icon }) => {
           const active = mode === itemMode;
           return (
@@ -33,11 +33,12 @@ export function NavTabs({ mode, onNavigate, attention = {} }: NavTabsProps) {
                   <m.span
                     layoutId="nav-pill"
                     transition={spring.snappy}
-                    className="absolute inset-0 rounded-sm bg-raised shadow-sm"
+                    className="absolute inset-0 rounded-sm bg-tab shadow-sm"
                     aria-hidden="true"
                   />
                 )}
-                <Icon className="relative size-4" aria-hidden="true" />
+                {/* Icons join the labels once there is room for both */}
+                <Icon className="relative hidden size-4 lg:block" aria-hidden="true" />
                 <span className="relative">{t(labelKey)}</span>
                 {attention[itemMode] && <span className="relative size-1.5 rounded-full bg-warn" aria-hidden="true" />}
               </button>
@@ -56,7 +57,7 @@ export function BottomTabs({ mode, onNavigate, attention = {} }: NavTabsProps) {
   return (
     <nav
       aria-label={t('nav.main')}
-      className="shrink-0 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="shrink-0 bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       <ul className="grid grid-cols-4">
         {navItems.map(({ mode: itemMode, labelKey, icon: Icon }) => {

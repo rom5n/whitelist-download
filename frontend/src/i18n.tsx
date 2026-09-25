@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 
 /** Supported languages */
 export type Language = 'en' | 'ru';
@@ -73,15 +73,13 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.port': 'Port',
     'settings.forcedIp': 'Forced IP',
     'settings.subPath': 'Subscription Path',
-    'settings.configsPath': 'Configs Path',
-    'settings.logsPath': 'Logs Path',
-    'settings.interval': 'Update Interval (min)',
+    'settings.interval': 'Update interval',
     'settings.sourcePlaceholder': 'Enter URL...',
     'settings.addSource': 'Add Source',
     'settings.removeSource': 'Remove',
     'settings.levelNormalDesc': 'Checking configurations using server ping [Fast]',
     'settings.levelUltraDesc': 'Checking configurations using sing-box core, better than ping, but filters out more configurations that might have been working [Slow]',
-    'settings.saving': 'Saving...',
+    'settings.saving': 'Saving changes…',
     'settings.saved': 'Saved!',
     'settings.saveError': 'Error',
     'settings.restartRequired': 'Restart required',
@@ -106,7 +104,6 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.autoUpdateMajor': 'Auto-download major updates',
     'settings.autoUpdatePatch': 'Auto-download bug fixes & improvements',
     'settings.autoBrowserOpen': 'Auto-open browser on startup',
-    'settings.appliedInstantly': 'Applied immediately',
     'settings.autoRefresh': 'Configs auto-update',
 
     // Pause of configs auto-update
@@ -144,7 +141,7 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.allRegions': 'All Countries',
     'sidebar.aggregated': 'Aggregated subscription',
     'sidebar.unknown': 'Unknown',
-    'sidebar.loading': 'Loading...',
+    'sidebar.loading': 'Loading…',
     
     'details.globalSub': 'Global Subscription',
     'details.sub': 'Subscription',
@@ -173,6 +170,40 @@ const translations: Record<Language, Record<string, string>> = {
     'details.configLink': 'Config link',
     'details.qr': 'QR code',
     'common.loadError': 'Could not reach the app. Check that Whitelist Download is running.',
+    'settings.updateConfigsShort': 'Update',
+    'settings.restartServerShort': 'Restart',
+    'settings.intervalUnit': 'min',
+    'settings.intervalHint': 'From 1 minute to 7 days',
+    'settings.intervalPresets': 'Quick values',
+    'settings.errIntervalEmpty': 'Enter the interval in minutes',
+    'settings.errIntervalDigits': 'Digits only: a whole number of minutes',
+    'settings.errIntervalMin': 'The shortest interval is 1 minute',
+    'settings.errIntervalMax': 'The longest interval is 10080 minutes (7 days)',
+    'unit.minutes': 'min',
+    'unit.hours': 'h',
+    'import.title': 'Import configs',
+    'import.description': 'Download configs as a .txt file to import them into a VPN client.',
+    'import.country': 'Country',
+    'import.allCountries': 'All countries',
+    'import.count': 'Count',
+    'import.countPlaceholder': 'All',
+    'import.countHint': 'Empty — all configs',
+    'import.offset': 'Offset',
+    'import.offsetHint': 'How many configs to skip from the start',
+    'import.fileName': 'File name',
+    'import.fileNameReset': 'Name after the filters',
+    'import.download': 'Download',
+    'import.downloading': 'Preparing…',
+    'import.done': 'Downloaded',
+    'import.available': 'Available',
+    'import.empty': 'No configs match these filters. Lower the offset or choose another country.',
+    'import.error': 'Could not get the configs. Check that the app is running and try again.',
+    'import.errCount': 'Enter a whole number greater than 0',
+    'import.errOffset': 'Enter a whole number, 0 or more',
+    'import.errOffsetTooBig': 'The offset skips all available configs',
+    'import.errFileName': 'The name must not be empty or contain \\ / : * ? " < > |',
+    'import.countriesError': 'Could not load the countries',
+    'sidebar.refreshed': 'The config list has been updated',
     'statsView.configs': 'Configs',
     'statsView.byCountry': 'Configs by country',
     'statsView.noData': 'No data yet',
@@ -254,15 +285,13 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.port': 'Порт',
     'settings.forcedIp': 'Принудительный IP',
     'settings.subPath': 'Путь подписки',
-    'settings.configsPath': 'Путь к конфигам',
-    'settings.logsPath': 'Путь к логам',
-    'settings.interval': 'Интервал обновления (мин)',
+    'settings.interval': 'Интервал обновления',
     'settings.sourcePlaceholder': 'Введите ссылку...',
     'settings.addSource': 'Добавить источник',
     'settings.removeSource': 'Удалить',
     'settings.levelNormalDesc': 'Проверка конфигураций с помощью пинга сервера [Быстро]',
     'settings.levelUltraDesc': 'Проверка конфигураций с помощью ядра sing-box, лучше пинга, но отсеивает больше конфигураций, которые могли быть рабочими [Медленно]',
-    'settings.saving': 'Сохранение...',
+    'settings.saving': 'Сохранение изменений…',
     'settings.saved': 'Сохранено!',
     'settings.saveError': 'Ошибка',
     'settings.restartRequired': 'Требуется рестарт',
@@ -287,7 +316,6 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.autoUpdateMajor': 'Автоматически скачивать крупные обновления',
     'settings.autoUpdatePatch': 'Автоматически скачивать исправления багов и улучшения',
     'settings.autoBrowserOpen': 'Автоматически открывать браузер при запуске',
-    'settings.appliedInstantly': 'Применяется сразу',
     'settings.autoRefresh': 'Автообновление конфигов',
 
     // Pause of configs auto-update
@@ -325,7 +353,7 @@ const translations: Record<Language, Record<string, string>> = {
     'sidebar.allRegions': 'Все страны',
     'sidebar.aggregated': 'Объединенная подписка',
     'sidebar.unknown': 'Неизвестно',
-    'sidebar.loading': 'Загрузка...',
+    'sidebar.loading': 'Загрузка…',
     
     'details.globalSub': 'Глобальная подписка',
     'details.sub': 'Подписка',
@@ -354,6 +382,40 @@ const translations: Record<Language, Record<string, string>> = {
     'details.configLink': 'Ссылка на конфиг',
     'details.qr': 'QR-код',
     'common.loadError': 'Нет связи с приложением. Проверьте, что Whitelist Download запущен.',
+    'settings.updateConfigsShort': 'Обновить',
+    'settings.restartServerShort': 'Перезапуск',
+    'settings.intervalUnit': 'мин',
+    'settings.intervalHint': 'От 1 минуты до 7 дней',
+    'settings.intervalPresets': 'Быстрый выбор',
+    'settings.errIntervalEmpty': 'Укажите интервал в минутах',
+    'settings.errIntervalDigits': 'Только цифры: целое число минут',
+    'settings.errIntervalMin': 'Минимальный интервал — 1 минута',
+    'settings.errIntervalMax': 'Максимальный интервал — 10080 минут (7 дней)',
+    'unit.minutes': 'мин',
+    'unit.hours': 'ч',
+    'import.title': 'Импорт конфигов',
+    'import.description': 'Скачайте конфиги файлом .txt, чтобы импортировать их в VPN-клиент.',
+    'import.country': 'Страна',
+    'import.allCountries': 'Все страны',
+    'import.count': 'Количество',
+    'import.countPlaceholder': 'Все',
+    'import.countHint': 'Пусто — все конфиги',
+    'import.offset': 'Смещение',
+    'import.offsetHint': 'Сколько конфигов пропустить с начала',
+    'import.fileName': 'Имя файла',
+    'import.fileNameReset': 'Имя по фильтрам',
+    'import.download': 'Скачать',
+    'import.downloading': 'Подготовка…',
+    'import.done': 'Скачано',
+    'import.available': 'Доступно',
+    'import.empty': 'По этим фильтрам конфигов нет. Уменьшите смещение или выберите другую страну.',
+    'import.error': 'Не удалось получить конфиги. Проверьте, что приложение запущено, и попробуйте ещё раз.',
+    'import.errCount': 'Введите целое число больше 0',
+    'import.errOffset': 'Введите целое число от 0',
+    'import.errOffsetTooBig': 'Смещение пропускает все доступные конфиги',
+    'import.errFileName': 'Имя не должно быть пустым и содержать \\ / : * ? " < > |',
+    'import.countriesError': 'Не удалось загрузить список стран',
+    'sidebar.refreshed': 'Список конфигов обновлён',
     'statsView.configs': 'Конфигов',
     'statsView.byCountry': 'Конфиги по странам',
     'statsView.noData': 'Данных пока нет',
@@ -380,18 +442,31 @@ const I18nContext = createContext<I18nContextValue | undefined>(undefined);
 
 /**
  * Provides translation context to all child components.
- * Reads saved language preference from localStorage; defaults to English.
+ * Reads saved language preference from localStorage; defaults to Russian.
  */
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem('wl-language');
-    return (saved === 'ru' || saved === 'en') ? saved : 'en';
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem('wl-language');
+    } catch {
+      // Storage is unavailable (private mode, blocked site data): use the default
+    }
+    return (saved === 'ru' || saved === 'en') ? saved : 'ru';
   });
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   /** Updates current language and persists to localStorage */
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem('wl-language', lang);
+    try {
+      localStorage.setItem('wl-language', lang);
+    } catch {
+      // Not remembered, but still applied
+    }
   }, []);
 
   /** Translates a key to the current language; returns the key itself if not found */

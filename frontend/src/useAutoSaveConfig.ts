@@ -12,7 +12,7 @@ export type SaveStatus = 'saved' | 'saving' | 'invalid' | 'error';
 
 /** Settings edited in the form; the others are applied immediately through their own endpoints */
 const EDITABLE_FIELDS: (keyof AppConfig)[] = [
-  'app_name', 'subscription_title', 'description_text', 'port', 'configs_path', 'subscription_path',
+  'app_name', 'subscription_title', 'description_text', 'port', 'subscription_path',
   'update_interval_minutes', 'sources', 'forced_ip', 'auto_update_major', 'auto_update_patch', 'auto_browser_open',
 ];
 

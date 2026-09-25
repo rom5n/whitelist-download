@@ -48,12 +48,12 @@
 @theme inline {
   --font-sans: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  /* Flag emoji: the polyfill font (loaded only where the OS has no flags, i.e. Windows) goes first */
-  --font-flag: 'Twemoji Country Flags', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
 
-  /* Surfaces: bg (page) < surface (cards) < raised (controls on cards); sunken is for wells */
+  /* Surfaces: bg (page) < surface (cards, and the app chrome: header and sidebar) < raised (controls on cards);
+     sunken is for wells; tab is the selected item of a segmented group */
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-tab: var(--tab);
   --color-raised: var(--raised);
   --color-sunken: var(--sunken);
   --color-line: var(--line);
@@ -87,6 +87,8 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
+  /* The QR code window: a rounded "porthole" */
+  --radius-porthole: 44px;
 
   /* Elevation */
   --shadow-xs: var(--elev-xs);
@@ -117,6 +119,8 @@
   --animate-pop: pop 260ms var(--ease-spring) both;
   --animate-shimmer: shimmer 1.4s ease-in-out infinite;
   --animate-spin: spin 0.8s linear infinite;
+  /* A quick flash (~150ms up) that fades out slower (~450ms) */
+  --animate-flash: flash 600ms linear both;
 }
 
 :root,
@@ -126,6 +130,7 @@
   --surface: #12151c;
   --raised: #1a1e27;
   --sunken: #0e1016;
+  --tab: #1e232e;
   --line: #232835;
   --line-strong: #323949;
   --fg: #e9ecf2;
@@ -148,7 +153,6 @@
   --danger-soft: rgb(239 68 68 / 0.14);
 
   --ring: rgb(126 166 255 / 0.9);
-  --glow: rgb(2 83 247 / 0.18);
 
   /* In the dark shadows barely show, so elevation is mostly a lighter top edge */
   --elev-xs: inset 0 1px 0 rgb(255 255 255 / 0.04);
@@ -163,6 +167,7 @@
   --surface: #ffffff;
   --raised: #f3f4f7;
   --sunken: #eef0f3;
+  --tab: #ffffff;
   --line: #e1e4ea;
   --line-strong: #cbd0da;
   --fg: #10131a;
@@ -185,7 +190,6 @@
   --danger-soft: rgb(220 38 38 / 0.09);
 
   --ring: rgb(2 83 247 / 0.75);
-  --glow: rgb(2 83 247 / 0.1);
 
   --elev-xs: 0 1px 1px rgb(16 19 26 / 0.04);
   --elev-sm: 0 1px 2px rgb(16 19 26 / 0.06), 0 1px 1px rgb(16 19 26 / 0.04);
@@ -227,6 +231,12 @@
   from { opacity: 0.7; transform: scale(1); }
   to { opacity: 0; transform: scale(2.4); }
 }
+/* The QR window lights up when a config is selected: fast in, slower out */
+@keyframes flash {
+  0% { opacity: 0; transform: scale(0.97); animation-timing-function: var(--ease-out); }
+  25% { opacity: 1; transform: none; animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  100% { opacity: 0; transform: scale(1.015); }
+}
 /* The restart button breathes: only the opacity of its glow layer changes */
 @keyframes breathe {
   0%, 100% { opacity: 0.15; }
@@ -252,10 +262,8 @@
     margin: 0;
     min-width: 320px;
     min-height: 100dvh;
-    /* A still, faint glow of the accent at the top: atmosphere without animation cost */
-    background:
-      radial-gradient(1200px 480px at 50% -240px, var(--glow), transparent 70%),
-      var(--bg);
+    /* The app chrome (header and sidebar) is one surface; the content sits on --bg */
+    background: var(--surface);
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
   }
@@ -301,15 +309,23 @@
 /* ==========================================================================
    Utilities
    ========================================================================== */
-@utility flag {
-  font-family: var(--font-flag);
-  line-height: 1;
-  font-style: normal;
+/* Fades the edges of a scroll area where content is hidden; data-fade-start / data-fade-end are set by
+   useScrollFade. The fade sizes are registered properties, so they transition smoothly. */
+@property --fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
 }
-
-/* Soft fade at the bottom edge of a scroll area */
-@utility fade-bottom {
-  mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
+@property --fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@utility scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+  transition: --fade-start 200ms var(--ease-out), --fade-end 200ms var(--ease-out);
+  &[data-fade-start] { --fade-start: 28px; }
+  &[data-fade-end] { --fade-end: 28px; }
 }
 
 /* Pressing feels physical: a quick, small shrink */
@@ -328,6 +344,16 @@
 }
 
 @layer base {
+  /* Numbers are typed, not stepped: no spinner buttons */
+  input[type='number'] {
+    appearance: textfield;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
   /* Range sliders */
   input[type='range'] {
     appearance: none;

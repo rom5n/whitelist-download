@@ -1,20 +1,23 @@
-import { useState, useMemo, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { AnimatePresence, m } from 'motion/react';
-import { Check, CircleAlert, ExternalLink, Heart, Plus, Power, RefreshCw, X } from 'lucide-react';
+import { Check, ExternalLink, Heart, Plus, Power, RefreshCw, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { updateConfigs, restartServer, setCheckLevel, type AppConfig, type CheckLevel, type PollingState } from '../api';
-import { useAutoSaveConfig, type SaveStatus } from '../useAutoSaveConfig';
+import { useAutoSaveConfig } from '../useAutoSaveConfig';
+import { useScrollFade } from '../useScrollFade';
 import { isValidSource } from '../validateConfig';
-import { fade, itemVariants, spring } from '../motion/presets';
+import { itemVariants, spring } from '../motion/presets';
 import AutoUpdateControl from './AutoUpdateControl';
+import ImportConfigs from './ImportConfigs';
+import IntervalField from './IntervalField';
+import RestartVignette from './RestartVignette';
+import SaveStatus from './SaveStatus';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Field from '../ui/Field';
 import Switch from '../ui/Switch';
 import SegmentedControl from '../ui/SegmentedControl';
-import Badge from '../ui/Badge';
 import Skeleton from '../ui/Skeleton';
-import Spinner from '../ui/Spinner';
 import GithubIcon from '../ui/GithubIcon';
 import { inputClass } from '../ui/styles';
 
@@ -22,56 +25,16 @@ interface SettingsViewProps {
   version: string | undefined;
   pollingState: PollingState | null;
   onPollingStateChange: (state: PollingState) => void;
+  /** Configs per country, for the import filters; null while the statistics load */
+  countries: Record<string, number> | null;
+  totalConfigs: number;
+  countriesError: boolean;
+  onRetryCountries: () => void;
 }
 
 type ActionState = 'idle' | 'busy' | 'done' | 'failed';
 
-/** The auto-save indicator: each state swaps in with a short fade */
-function SaveIndicator({ status, errorMessage, onRetry }: { status: SaveStatus; errorMessage: string; onRetry: () => void }) {
-  const { t } = useTranslation();
-
-  const content: Record<SaveStatus, ReactNode> = {
-    saving: (
-      <span className="flex items-center gap-2 text-fg-3">
-        <Spinner className="size-3.5" />
-        {t('settings.saving')}
-      </span>
-    ),
-    saved: (
-      <span className="flex items-center gap-2 text-fg-3">
-        <Check className="size-4 text-success-text" aria-hidden="true" />
-        {t('settings.autosaveSaved')}
-      </span>
-    ),
-    invalid: (
-      <span className="flex items-center gap-2 font-medium text-danger-text">
-        <CircleAlert className="size-4" aria-hidden="true" />
-        {t('settings.autosaveInvalid')}
-      </span>
-    ),
-    error: (
-      <span className="flex items-center gap-3">
-        <span className="flex items-center gap-2 font-medium text-danger-text" title={errorMessage}>
-          <CircleAlert className="size-4" aria-hidden="true" />
-          {t('settings.autosaveError')}
-        </span>
-        <Button variant="danger" size="sm" onClick={onRetry}>{t('settings.retry')}</Button>
-      </span>
-    ),
-  };
-
-  return (
-    <div className="min-h-9 text-sm" role="status">
-      <AnimatePresence mode="wait" initial={false}>
-        <m.div key={status} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fade} className="flex min-h-9 items-center">
-          {content[status]}
-        </m.div>
-      </AnimatePresence>
-    </div>
-  );
-}
-
-export default function SettingsView({ version, pollingState, onPollingStateChange }: SettingsViewProps) {
+export default function SettingsView({ version, pollingState, onPollingStateChange, countries, totalConfigs, countriesError, onRetryCountries }: SettingsViewProps) {
   const { t } = useTranslation();
   const { config, errors, status, errorMessage, restart, update, retry } = useAutoSaveConfig(pollingState?.working_check_level);
   const [newSource, setNewSource] = useState('');
@@ -80,6 +43,7 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
   const [restartState, setRestartState] = useState<ActionState>('idle');
   const [levelFailed, setLevelFailed] = useState(false);
   const timers = useRef<number[]>([]);
+  const sourcesRef = useScrollFade<HTMLUListElement>();
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn: () => void, ms: number) => timers.current.push(window.setTimeout(fn, ms));
@@ -148,9 +112,9 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
         <div className="mx-auto w-full max-w-3xl px-4 pb-10 sm:px-8">
           {/* Status and actions stay in view while scrolling */}
           <div className="sticky top-0 z-10 -mx-4 flex flex-col gap-3 border-b border-line bg-bg px-4 py-4 sm:-mx-8 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <div className="flex min-w-0 flex-col">
               <h1 className="text-xl font-semibold text-fg">{t('control.settings')}</h1>
-              <SaveIndicator status={status} errorMessage={errorMessage} onRetry={retry} />
+              <SaveStatus status={status} restartRequired={restart.required} errorMessage={errorMessage} onRetry={retry} />
             </div>
 
             <div className="flex gap-2">
@@ -164,7 +128,13 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
                     : <RefreshCw className="size-4" aria-hidden="true" />}
                 className="flex-1 sm:flex-none"
               >
-                {updateState === 'busy' ? t('control.updating') : updateState === 'done' ? t('control.success') : updateState === 'failed' ? t('control.error') : t('settings.updateConfigs')}
+                {updateState === 'busy' ? t('control.updating') : updateState === 'done' ? t('control.success') : updateState === 'failed' ? t('control.error') : (
+                  <>
+                    {/* Phones get short labels, so both buttons fit in one row */}
+                    <span className="sm:hidden">{t('settings.updateConfigsShort')}</span>
+                    <span className="hidden sm:inline">{t('settings.updateConfigs')}</span>
+                  </>
+                )}
               </Button>
 
               <Button
@@ -178,26 +148,16 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
                   <span aria-hidden="true" className="breathe pointer-events-none absolute -inset-px rounded-md bg-warn-soft shadow-[0_0_16px_var(--warn-soft)]" />
                 )}
                 <span className="relative">
-                  {restartState === 'busy' ? t('control.restarting') : restartState === 'done' ? t('control.done') : t('settings.restartServer')}
+                  {restartState === 'busy' ? t('control.restarting') : restartState === 'done' ? t('control.done') : (
+                    <>
+                      <span className="sm:hidden">{t('settings.restartServerShort')}</span>
+                      <span className="hidden sm:inline">{t('settings.restartServer')}</span>
+                    </>
+                  )}
                 </span>
               </Button>
             </div>
           </div>
-
-          <AnimatePresence initial={false}>
-            {restart.required && (
-              <m.div
-                key="restart"
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={spring.gentle}
-                className="mt-4"
-              >
-                <Badge tone="warn" icon={<Power className="size-3.5" aria-hidden="true" />}>{t('settings.restartRequired')}</Badge>
-              </m.div>
-            )}
-          </AnimatePresence>
 
           <div className="mt-6 space-y-4">
             <Card title={t('settings.general')} className="animate-enter" style={cardDelay(0)}>
@@ -232,12 +192,7 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
               </div>
             </Card>
 
-            <Card
-              title={t('settings.workingLevel')}
-              action={<Badge>{t('settings.appliedInstantly')}</Badge>}
-              className="animate-enter"
-              style={cardDelay(1)}
-            >
+            <Card title={t('settings.workingLevel')} className="animate-enter" style={cardDelay(1)}>
               <SegmentedControl<CheckLevel>
                 label={t('settings.workingLevel')}
                 value={workingLevel === 2 ? 2 : 1}
@@ -255,15 +210,9 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
             <Card title={t('settings.autoRefresh')} className="animate-enter" style={cardDelay(2)}>
               <AutoUpdateControl state={pollingState} onStateChange={onPollingStateChange} />
               <div className="mt-5 border-t border-line pt-5">
-                <Field
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  className="max-w-56"
-                  label={t('settings.interval')}
-                  value={config.update_interval_minutes || ''}
-                  onChange={e => update('update_interval_minutes', e.target.value === '' ? 0 : Number(e.target.value))}
-                  error={errorNote('update_interval_minutes')}
+                <IntervalField
+                  value={config.update_interval_minutes}
+                  onChange={(minutes, immediate) => update('update_interval_minutes', minutes, immediate)}
                 />
               </div>
             </Card>
@@ -293,14 +242,6 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
                   error={errorNote('subscription_path')}
                   warning={restartNote('subscription_path')}
                 />
-                <Field
-                  className="md:col-span-2"
-                  mono
-                  label={t('settings.configsPath')}
-                  value={config.configs_path}
-                  onChange={e => update('configs_path', e.target.value)}
-                  error={errorNote('configs_path')}
-                />
               </div>
             </Card>
 
@@ -319,7 +260,16 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
               </div>
             </Card>
 
-            <Card title={t('settings.sources')} className="animate-enter" style={cardDelay(5)}>
+            <ImportConfigs
+              countries={countries}
+              total={totalConfigs}
+              loadError={countriesError}
+              onRetry={onRetryCountries}
+              className="animate-enter"
+              style={cardDelay(5)}
+            />
+
+            <Card title={t('settings.sources')} className="animate-enter" style={cardDelay(6)}>
               <form
                 className="flex flex-col gap-2 sm:flex-row"
                 onSubmit={event => {
@@ -341,32 +291,35 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
                 </Button>
               </form>
 
-              <ul className="mt-4 overflow-hidden rounded-md border border-line">
-                <AnimatePresence initial={false}>
-                  {(config.sources || []).map(source => (
-                    <m.li
-                      key={source}
-                      layout="position"
-                      variants={itemVariants}
-                      initial="hidden"
-                      animate="visible"
-                      exit="exit"
-                      transition={spring.gentle}
-                      className="flex items-center gap-3 border-b border-line bg-surface pl-4 last:border-b-0"
-                    >
-                      <span className="min-w-0 flex-1 truncate py-3 font-mono text-[13px] text-fg" title={source}>{source}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeSource(source)}
-                        aria-label={`${t('settings.removeSource')}: ${source}`}
-                        className="press flex size-11 shrink-0 items-center justify-center rounded-md text-fg-3 cursor-pointer hover:bg-danger-soft hover:text-danger-text"
+              {/* A long list scrolls inside; its edges fade only where there is more to see */}
+              <div className="mt-4 overflow-hidden rounded-md border border-line">
+                <ul ref={sourcesRef} aria-label={t('settings.sources')} className="scroll-fade max-h-[21rem] overflow-y-auto overscroll-contain">
+                  <AnimatePresence initial={false}>
+                    {(config.sources || []).map(source => (
+                      <m.li
+                        key={source}
+                        layout="position"
+                        variants={itemVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        transition={spring.gentle}
+                        className="flex items-center gap-3 border-b border-line bg-surface pl-4 last:border-b-0"
                       >
-                        <X className="size-4" aria-hidden="true" />
-                      </button>
-                    </m.li>
-                  ))}
-                </AnimatePresence>
-              </ul>
+                        <span className="min-w-0 flex-1 truncate py-3 font-mono text-[13px] text-fg" title={source}>{source}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeSource(source)}
+                          aria-label={`${t('settings.removeSource')}: ${source}`}
+                          className="press flex size-11 shrink-0 items-center justify-center rounded-md text-fg-3 cursor-pointer hover:bg-danger-soft hover:text-danger-text"
+                        >
+                          <X className="size-4" aria-hidden="true" />
+                        </button>
+                      </m.li>
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              </div>
             </Card>
           </div>
 
@@ -394,13 +347,7 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
         </div>
       </div>
 
-      {/* A soft orange vignette along the edges while a restart is required; it only fades in and out */}
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-0 rounded-xl transition-opacity duration-700 ease-in-out
-                    shadow-[inset_0_0_70px_0_color-mix(in_srgb,var(--warn)_20%,transparent)]
-                    ${restart.required ? 'opacity-100' : 'opacity-0'}`}
-      />
+      <RestartVignette visible={restart.required} />
     </div>
   );
 }

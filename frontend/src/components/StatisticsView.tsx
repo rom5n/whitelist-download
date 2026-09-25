@@ -3,7 +3,6 @@ import { CalendarClock, CloudOff, Globe, Layers, RefreshCw, RotateCw, Timer } fr
 import { useTranslation } from '../i18n';
 import type { PollingState, Statistics } from '../api';
 import { formatClock } from '../formatTime';
-import { getFlagEmoji } from '../countryFlags';
 import Flag from '../ui/Flag';
 import Skeleton from '../ui/Skeleton';
 import EmptyState from '../ui/EmptyState';
@@ -49,7 +48,7 @@ const CountryChart = memo(function CountryChart({ byCountry }: { byCountry: [str
           {byCountry.map(([country, count], i) => (
             <li key={country} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_3.5rem] items-center gap-3 rounded-sm px-2 py-1.5 hover:bg-raised">
               <span className="flex min-w-0 items-center gap-2 text-sm text-fg">
-                <Flag emoji={getFlagEmoji(country)} className="text-base" />
+                <Flag country={country} className="size-4" />
                 <span className="truncate">{country}</span>
               </span>
               <span className="h-2 overflow-hidden rounded-full bg-raised" aria-hidden="true">

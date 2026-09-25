@@ -1,9 +1,8 @@
 import { memo, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { ChevronLeft, Globe, TriangleAlert } from 'lucide-react';
-import { parseVlessString } from '../api';
+import { parseVlessString, toCountryParam } from '../api';
 import { useTranslation } from '../i18n';
-import { getFlagEmoji } from '../countryFlags';
 import CopyButton from '../ui/CopyButton';
 import Flag from '../ui/Flag';
 import Skeleton from '../ui/Skeleton';
@@ -12,8 +11,8 @@ import { inputClass } from '../ui/styles';
 
 interface DetailsViewProps {
   activeCountry: string | null;
-  activeConfigIndex: number | null;
-  /** The selected config link (not the whole list, so loading more configs doesn't re-render this view) */
+  /** The selected config link, or null for the subscription (not the whole list, so loading more configs
+      doesn't re-render this view) */
   activeConfig: string | null;
   baseSubLink: string;
   offset: number;
@@ -25,17 +24,38 @@ interface DetailsViewProps {
   onBack: () => void;
 }
 
-/** The QR code on a white tile (scanners need contrast in both themes) next to the link and its actions. */
-const ShareCard = memo(function ShareCard({ value, label, qrLabel, children }: { value: string; label: string; qrLabel: string; children?: ReactNode }) {
+/**
+ * The QR code in a "porthole": a white window (scanners need contrast in both themes) in a soft frame,
+ * both with large rounded corners. The padding keeps the code's corners clear of the curve:
+ * a corner radius r cuts about 0.3·r into the square, and the padding is wider than that.
+ * With `flash`, the frame lights up once when it appears (a config was selected).
+ */
+function Porthole({ value, label, flash }: { value: string; label: string; flash: boolean }) {
   return (
-    <section className="grid gap-6 rounded-lg border border-line bg-surface p-5 shadow-sm sm:p-6 md:grid-cols-[auto_minmax(0,1fr)]">
-      <div className="mx-auto h-fit rounded-lg bg-white p-3 shadow-xs ring-1 ring-black/5 md:mx-0 md:self-start">
+    <div className="relative mx-auto h-fit rounded-porthole bg-raised p-1.5 shadow-[inset_0_0_0_1px_var(--line)] md:mx-0 md:self-start">
+      {flash && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -inset-1 animate-flash rounded-[calc(var(--radius-porthole)+4px)]
+                     shadow-[0_0_0_2px_var(--accent),0_0_22px_2px_color-mix(in_srgb,var(--accent)_45%,transparent)]"
+        />
+      )}
+      <div className="rounded-[calc(var(--radius-porthole)-6px)] bg-white px-[18px] py-6 shadow-[inset_0_1px_3px_rgb(0_0_0/0.12)]">
         {value ? (
-          <QRCodeSVG value={value} size={184} level="M" role="img" aria-label={qrLabel} className="block animate-fade" />
+          <QRCodeSVG value={value} size={184} level="M" role="img" aria-label={label} className="block animate-fade" />
         ) : (
           <Skeleton className="size-[184px] rounded-md" />
         )}
       </div>
+    </div>
+  );
+}
+
+/** The QR code next to the link and its actions. */
+const ShareCard = memo(function ShareCard({ value, label, qrLabel, flash = false, children }: { value: string; label: string; qrLabel: string; flash?: boolean; children?: ReactNode }) {
+  return (
+    <section className="grid gap-6 rounded-lg border border-line bg-surface p-5 shadow-sm sm:p-6 md:grid-cols-[auto_minmax(0,1fr)]">
+      <Porthole value={value} label={qrLabel} flash={flash} />
 
       <div className="flex min-w-0 flex-col gap-3">
         <label className="flex flex-col gap-2">
@@ -79,7 +99,6 @@ function RangeField({ label, value, valueLabel, min, max, onChange }: { label: s
 
 export default memo(function DetailsView({
   activeCountry,
-  activeConfigIndex,
   activeConfig,
   baseSubLink,
   offset,
@@ -91,16 +110,13 @@ export default memo(function DetailsView({
 }: DetailsViewProps) {
   const { t } = useTranslation();
 
-  const activeConfigStr = activeConfigIndex !== null ? activeConfig : null;
-  const parsedConfig = useMemo(() => {
-    return activeConfigStr ? parseVlessString(activeConfigStr) : null;
-  }, [activeConfigStr]);
+  const parsedConfig = useMemo(() => (activeConfig ? parseVlessString(activeConfig) : null), [activeConfig]);
 
   const subUrl = useMemo(() => {
     if (!baseSubLink) return '';
     let url = baseSubLink;
     if (activeCountry) {
-      url += `/${activeCountry.toLowerCase().replace(/\s+/g, '-')}`;
+      url += `/${toCountryParam(activeCountry)}`;
     }
 
     if (offset > 1 && limit > 0) {
@@ -130,12 +146,12 @@ export default memo(function DetailsView({
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl animate-enter px-4 py-6 sm:px-8 sm:py-10">
-        {activeConfigIndex === null ? (
+        {activeConfig === null ? (
           <>
             {backButton}
             <header className="mb-6 flex items-center gap-4">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-lg border border-line bg-surface shadow-xs">
-                {activeCountry ? <Flag emoji={getFlagEmoji(activeCountry)} className="text-2xl" /> : <Globe className="size-6 text-accent-text" aria-hidden="true" />}
+                {activeCountry ? <Flag country={activeCountry} className="size-7" /> : <Globe className="size-6 text-accent-text" aria-hidden="true" />}
               </span>
               <div className="min-w-0">
                 <h1 className="text-3xl font-semibold tracking-tight text-fg">
@@ -172,7 +188,7 @@ export default memo(function DetailsView({
             {backButton}
             <header className="mb-6 flex items-center gap-4">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-lg border border-line bg-surface shadow-xs">
-                <Flag emoji={parsedConfig.flag} className="text-2xl" />
+                <Flag emoji={parsedConfig.flag} className="size-7" />
               </span>
               <div className="min-w-0">
                 <h1 className="truncate font-mono text-xl font-medium text-fg sm:text-3xl sm:leading-[2.125rem]">{parsedConfig.ip}</h1>
@@ -182,7 +198,7 @@ export default memo(function DetailsView({
               </div>
             </header>
 
-            <ShareCard value={activeConfigStr!} label={t('details.configLink')} qrLabel={t('details.qr')} />
+            <ShareCard value={activeConfig} label={t('details.configLink')} qrLabel={t('details.qr')} flash />
 
             <section className="mt-6 rounded-lg border border-line bg-surface shadow-xs">
               <dl className="grid grid-cols-2 divide-line max-sm:divide-y sm:grid-cols-[1fr_1fr_2fr] sm:divide-x">

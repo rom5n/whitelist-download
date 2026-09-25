@@ -14,5 +14,7 @@ export default defineConfig({
   build: {
     outDir: '../backend/http/dist',
     emptyOutDir: true,
+    // Flags stay separate files, fetched when shown, instead of being inlined into the bundle
+    assetsInlineLimit: (file) => (file.includes('circle-flags') ? false : undefined),
   }
 })

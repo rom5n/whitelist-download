@@ -79,7 +79,7 @@ export default memo(function AppHeader({ mode, onNavigate, updaterState, paused,
   const updateVisible = updaterState && ['available', 'downloading', 'installing', 'reload', 'error'].includes(updaterState.status);
 
   return (
-    <header className="relative z-20 flex h-16 shrink-0 items-center gap-3 border-b border-line bg-bg/80 px-4 sm:px-6 animate-fade">
+    <header className="relative z-20 flex h-16 shrink-0 items-center gap-3 bg-surface px-4 sm:px-6 animate-fade">
       <button
         type="button"
         onClick={() => onNavigate('details')}
@@ -145,8 +145,6 @@ export default memo(function AppHeader({ mode, onNavigate, updaterState, paused,
         >
           <Heart className="size-[18px] transition-transform duration-300 ease-spring group-hover:scale-110 group-hover:fill-current" aria-hidden="true" />
         </a>
-
-        <span className="mx-1 hidden h-6 w-px bg-line sm:block" aria-hidden="true" />
 
         <IconButton
           label={`${t('header.language')}: ${language === 'en' ? 'RU' : 'EN'}`}

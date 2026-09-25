@@ -24,7 +24,6 @@ export interface AppConfig {
   subscription_title: string;
   description_text: string;
   port: string;
-  configs_path: string;
   logs_path: string;
   subscription_path: string;
   update_interval_minutes: number;
@@ -75,6 +74,11 @@ export async function fetchStatistics(): Promise<Statistics> {
   const res = await fetch('/api/statistics');
   if (!res.ok) throw new Error('Failed to fetch statistics');
   return res.json();
+}
+
+/** The country as the API expects it in URLs: lowercase, spaces as dashes ("United States" → "united-states") */
+export function toCountryParam(country: string): string {
+  return country.toLowerCase().replace(/\s+/g, '-');
 }
 
 /**

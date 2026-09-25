@@ -38,14 +38,13 @@ func Configs(cfg *config.Config, configsCache *domain.SafeConfigsCache) func(w h
 			offset = 1
 		}
 
-		country := parseCountryName(query.Get("country"))
-
 		configsPath := config.ConfigsFilePath()
 
 		var configs []string
 
 		// Try from cache first
 		cacheMap := configsCache.Get()
+		country := resolveCountry(query.Get("country"), cacheMap)
 		if len(cacheMap) > 0 {
 			configs = extractConfigsFromMap(cacheMap, country, offset, limit)
 		} else {

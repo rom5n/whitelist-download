@@ -70,6 +70,23 @@ func retrieveParams(r *http.Request) (int, int, string, error) {
 	return offset, limit, country, nil
 }
 
+// resolveCountry maps a country from a URL ("united-states" or "United States") to the exact name used as a cache key.
+// Falls back to capitalizing the slug when the cache has no matching country.
+func resolveCountry(country string, cacheMap map[string][]string) string {
+	if country == "" {
+		return ""
+	}
+	if _, ok := cacheMap[country]; ok {
+		return country
+	}
+	for name := range cacheMap {
+		if strings.EqualFold(name, country) || strings.EqualFold(strings.ReplaceAll(name, " ", "-"), country) {
+			return name
+		}
+	}
+	return parseCountryName(country)
+}
+
 func parseCountryName(country string) string {
 	countryParts := strings.Split(country, "-")
 	if len(countryParts) > 1 {

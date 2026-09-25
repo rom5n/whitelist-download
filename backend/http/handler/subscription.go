@@ -41,6 +41,7 @@ func Subscription(cfg *config.Config, configsCache *domain.SafeConfigsCache) fun
 			w.Write([]byte(err.Error()))
 			return
 		}
+		country = resolveCountry(country, configsCache.Get())
 
 		title := base64.StdEncoding.EncodeToString([]byte(subscriptionTitle))
 		description := base64.StdEncoding.EncodeToString([]byte(descriptionText))

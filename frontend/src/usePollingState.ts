@@ -13,7 +13,7 @@ export function usePollingState(intervalMs = 3000) {
     let cancelled = false;
 
     const load = () => fetchPollingState().then(next => {
-      if (!cancelled) setState(next);
+      if (!cancelled) setState(prev => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
     }).catch(console.error);
 
     load();

@@ -1,19 +1,22 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, type ReactNode } from 'react';
+import { AnimatePresence, m } from 'motion/react';
+import { Check, CircleAlert, ExternalLink, Heart, Plus, Power, RefreshCw, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { updateConfigs, restartServer, setCheckLevel, type AppConfig, type CheckLevel, type PollingState } from '../api';
-import { useAutoSaveConfig } from '../useAutoSaveConfig';
+import { useAutoSaveConfig, type SaveStatus } from '../useAutoSaveConfig';
 import { isValidSource } from '../validateConfig';
+import { fade, itemVariants, spring } from '../motion/presets';
 import AutoUpdateControl from './AutoUpdateControl';
-
-function SectionDivider({ label }: { label: string }) {
-  return (
-    <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-text-muted)] mt-8 mb-4 first:mt-0 flex items-center gap-2">
-      <span className="h-px flex-1 bg-[var(--color-border)]" />
-      <span>{label}</span>
-      <span className="h-px flex-1 bg-[var(--color-border)]" />
-    </div>
-  );
-}
+import Button from '../ui/Button';
+import Card from '../ui/Card';
+import Field from '../ui/Field';
+import Switch from '../ui/Switch';
+import SegmentedControl from '../ui/SegmentedControl';
+import Badge from '../ui/Badge';
+import Skeleton from '../ui/Skeleton';
+import Spinner from '../ui/Spinner';
+import GithubIcon from '../ui/GithubIcon';
+import { inputClass } from '../ui/styles';
 
 interface SettingsViewProps {
   version: string | undefined;
@@ -21,14 +24,65 @@ interface SettingsViewProps {
   onPollingStateChange: (state: PollingState) => void;
 }
 
+type ActionState = 'idle' | 'busy' | 'done' | 'failed';
+
+/** The auto-save indicator: each state swaps in with a short fade */
+function SaveIndicator({ status, errorMessage, onRetry }: { status: SaveStatus; errorMessage: string; onRetry: () => void }) {
+  const { t } = useTranslation();
+
+  const content: Record<SaveStatus, ReactNode> = {
+    saving: (
+      <span className="flex items-center gap-2 text-fg-3">
+        <Spinner className="size-3.5" />
+        {t('settings.saving')}
+      </span>
+    ),
+    saved: (
+      <span className="flex items-center gap-2 text-fg-3">
+        <Check className="size-4 text-success-text" aria-hidden="true" />
+        {t('settings.autosaveSaved')}
+      </span>
+    ),
+    invalid: (
+      <span className="flex items-center gap-2 font-medium text-danger-text">
+        <CircleAlert className="size-4" aria-hidden="true" />
+        {t('settings.autosaveInvalid')}
+      </span>
+    ),
+    error: (
+      <span className="flex items-center gap-3">
+        <span className="flex items-center gap-2 font-medium text-danger-text" title={errorMessage}>
+          <CircleAlert className="size-4" aria-hidden="true" />
+          {t('settings.autosaveError')}
+        </span>
+        <Button variant="danger" size="sm" onClick={onRetry}>{t('settings.retry')}</Button>
+      </span>
+    ),
+  };
+
+  return (
+    <div className="min-h-9 text-sm" role="status">
+      <AnimatePresence mode="wait" initial={false}>
+        <m.div key={status} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={fade} className="flex min-h-9 items-center">
+          {content[status]}
+        </m.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function SettingsView({ version, pollingState, onPollingStateChange }: SettingsViewProps) {
   const { t } = useTranslation();
   const { config, errors, status, errorMessage, restart, update, retry } = useAutoSaveConfig(pollingState?.working_check_level);
   const [newSource, setNewSource] = useState('');
 
-  const [updateActionText, setUpdateActionText] = useState('');
-  const [restartActionText, setRestartActionText] = useState('');
+  const [updateState, setUpdateState] = useState<ActionState>('idle');
+  const [restartState, setRestartState] = useState<ActionState>('idle');
   const [levelFailed, setLevelFailed] = useState(false);
+  const timers = useRef<number[]>([]);
+
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const later = (fn: () => void, ms: number) => timers.current.push(window.setTimeout(fn, ms));
 
   const isNewSourceValid = useMemo(() => {
     if (!newSource || !config) return false;
@@ -37,8 +91,9 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
 
   if (!config) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[var(--color-bg-primary)] p-6">
-        <div className="text-[var(--color-text-muted)] animate-pulse">{t('settings.loading')}</div>
+      <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6 sm:px-8 sm:py-10" aria-busy="true" aria-label={t('settings.loading')}>
+        <Skeleton className="h-9 w-48" />
+        {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-48 rounded-lg" />)}
       </div>
     );
   }
@@ -46,15 +101,8 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
   // The backend is the source of truth: the level can also be changed from the tray
   const workingLevel = pollingState?.working_check_level ?? config.working_check_level;
 
-  const needsRestart = (field: keyof AppConfig) => restart.fields.includes(field);
-
-  const inputCls = (field: keyof AppConfig) =>
-    `w-full px-4 py-3 rounded-xl text-sm bg-[var(--color-bg-input)] text-[var(--color-text-primary)] outline-none transition-all duration-200 border ${errors[field]
-      ? 'border-danger/60 bg-danger/5 focus:border-danger'
-      : needsRestart(field)
-        ? 'border-warn bg-warn/5'
-        : 'border-[var(--color-border)] focus:border-accent focus:ring-2 focus:ring-accent/20'
-    }`;
+  const restartNote = (field: keyof AppConfig) => (restart.fields.includes(field) ? t('settings.restartRequired') : undefined);
+  const errorNote = (field: keyof AppConfig) => (errors[field] ? t(errors[field]) : undefined);
 
   const handleLevelChange = async (level: CheckLevel) => {
     if (level === workingLevel) return;
@@ -68,17 +116,17 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
   };
 
   const handleUpdateConfigs = async () => {
-    setUpdateActionText(t('control.updating'));
+    setUpdateState('busy');
     const ok = await updateConfigs();
-    setUpdateActionText(ok ? t('control.success') : t('control.error'));
-    setTimeout(() => setUpdateActionText(''), 2000);
+    setUpdateState(ok ? 'done' : 'failed');
+    later(() => setUpdateState('idle'), 2000);
   };
 
   const handleRestart = async () => {
-    setRestartActionText(t('control.restarting'));
+    setRestartState('busy');
     await restartServer();
     // It closes connection so it might throw, we just let it be.
-    setTimeout(() => setRestartActionText(t('control.done')), 2000);
+    later(() => setRestartState('done'), 2000);
   };
 
   const addSource = () => {
@@ -88,302 +136,269 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
     }
   };
 
-  const removeSource = (i: number) => {
-    update('sources', (config.sources || []).filter((_, idx) => idx !== i), true);
+  const removeSource = (source: string) => {
+    update('sources', (config.sources || []).filter(s => s !== source), true);
   };
 
-  /** The message under a field: what is wrong with it, or that changing it needs a restart */
-  const fieldNote = (field: keyof AppConfig) => {
-    if (errors[field]) {
-      return <span className="text-[11px] text-danger mt-1.5 block font-medium">{t(errors[field])}</span>;
-    }
-    if (needsRestart(field)) {
-      return <span className="text-[11px] text-warn mt-1.5 block font-medium">{t('settings.restartRequired')}</span>;
-    }
-    return null;
-  };
-
-  const labelCls = 'block text-sm font-medium text-[var(--color-text-secondary)] mb-2';
+  const cardDelay = (i: number) => ({ animationDelay: `${i * 40}ms` });
 
   return (
-    <div className="flex-1 min-h-0 relative bg-[var(--color-bg-primary)]">
-      <div className="absolute inset-0 overflow-y-auto p-6 md:p-10">
-        <div className="w-full space-y-8 animate-[fade-in_0.3s_ease-out]">
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-            <div className="flex flex-wrap items-center gap-3 min-h-10">
-              <div className="flex items-center gap-2 text-sm" role="status">
-                {status === 'saving' && (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-[var(--color-border)] border-t-accent rounded-full animate-spin" />
-                    <span className="text-[var(--color-text-muted)]">{t('settings.saving')}</span>
-                  </>
-                )}
-                {status === 'saved' && (
-                  <>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-success">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span className="text-[var(--color-text-muted)]">{t('settings.autosaveSaved')}</span>
-                  </>
-                )}
-                {status === 'invalid' && (
-                  <span className="text-danger font-medium">{t('settings.autosaveInvalid')}</span>
-                )}
-                {status === 'error' && (
-                  <>
-                    <span className="text-danger font-medium" title={errorMessage}>{t('settings.autosaveError')}</span>
-                    <button
-                      onClick={retry}
-                      className="px-3 py-1 rounded-lg text-xs font-bold cursor-pointer border-none bg-danger text-white hover:bg-danger-hover transition-colors"
-                    >
-                      {t('settings.retry')}
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {restart.required && (
-                <span className="px-3 py-1 rounded-full text-xs font-semibold text-warn bg-warn/10 border border-warn/25 animate-[fade-in_0.4s_ease-out]">
-                  {t('settings.restartRequired')}
-                </span>
-              )}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-10 sm:px-8">
+          {/* Status and actions stay in view while scrolling */}
+          <div className="sticky top-0 z-10 -mx-4 flex flex-col gap-3 border-b border-line bg-bg px-4 py-4 sm:-mx-8 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <h1 className="text-xl font-semibold text-fg">{t('control.settings')}</h1>
+              <SaveIndicator status={status} errorMessage={errorMessage} onRetry={retry} />
             </div>
 
-            <div className="flex gap-3 shrink-0">
-              <button
+            <div className="flex gap-2">
+              <Button
                 onClick={handleUpdateConfigs}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium border border-[var(--color-border)] hover:border-accent hover:text-accent bg-[var(--color-bg-card)] cursor-pointer transition-colors"
+                loading={updateState === 'busy'}
+                icon={updateState === 'done'
+                  ? <Check key="done" className="size-4 animate-pop text-success-text" aria-hidden="true" />
+                  : updateState === 'failed'
+                    ? <X key="failed" className="size-4 animate-pop text-danger-text" aria-hidden="true" />
+                    : <RefreshCw className="size-4" aria-hidden="true" />}
+                className="flex-1 sm:flex-none"
               >
-                {updateActionText || t('settings.updateConfigs')}
-              </button>
-              <button
+                {updateState === 'busy' ? t('control.updating') : updateState === 'done' ? t('control.success') : updateState === 'failed' ? t('control.error') : t('settings.updateConfigs')}
+              </Button>
+
+              <Button
                 onClick={handleRestart}
-                className={`px-5 py-2.5 rounded-xl text-sm font-medium border cursor-pointer transition-colors ${restart.required
-                  ? 'animate-restart-blink text-warn'
-                  : 'border-[var(--color-border)] hover:border-warn hover:text-warn bg-[var(--color-bg-card)]'}`}
+                loading={restartState === 'busy'}
+                icon={<Power className="size-4" aria-hidden="true" />}
+                className={`flex-1 sm:flex-none ${restart.required ? 'border-warn/60! text-warn-text!' : ''}`}
               >
-                {restartActionText || t('settings.restartServer')}
-              </button>
-            </div>
-          </div>
-
-          <div className="w-full">
-            {/* === General === */}
-            <SectionDivider label={t('settings.general')} />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-              <div>
-                <label className={labelCls}>{t('settings.appName')}</label>
-                <input type="text" className={inputCls('app_name')} value={config.app_name}
-                  onChange={e => update('app_name', e.target.value)} />
-                {fieldNote('app_name')}
-              </div>
-              <div>
-                <label className={labelCls}>{t('settings.subTitle')}</label>
-                <input type="text" className={inputCls('subscription_title')} value={config.subscription_title}
-                  onChange={e => update('subscription_title', e.target.value)} />
-                {fieldNote('subscription_title')}
-              </div>
-            </div>
-
-            <div className="mb-5">
-              <label className={labelCls}>{t('settings.description')}</label>
-              <input type="text" className={inputCls('description_text')} value={config.description_text}
-                onChange={e => update('description_text', e.target.value)} />
-              {fieldNote('description_text')}
-            </div>
-
-            <div className="mb-5">
-              <label className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-secondary)] mb-2">
-                {t('settings.workingLevel')}
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
-                  {t('settings.appliedInstantly')}
+                {/* The glow breathes while a restart is required: only its opacity is animated */}
+                {restart.required && (
+                  <span aria-hidden="true" className="breathe pointer-events-none absolute -inset-px rounded-md bg-warn-soft shadow-[0_0_16px_var(--warn-soft)]" />
+                )}
+                <span className="relative">
+                  {restartState === 'busy' ? t('control.restarting') : restartState === 'done' ? t('control.done') : t('settings.restartServer')}
                 </span>
-              </label>
-              <div className="flex items-center gap-4">
-                <div className="relative grid grid-cols-2 p-1 bg-[var(--color-bg-input)] rounded-xl w-max border border-[var(--color-border)] shrink-0">
-                  <div
-                    className={`absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] bg-[var(--color-bg-card)] rounded-lg shadow-sm transition-transform duration-300 ease-in-out border border-[var(--color-border)] ${workingLevel === 2 ? 'translate-x-full' : 'translate-x-0'}`}
-                  />
-                  <button
-                    onClick={() => handleLevelChange(1)}
-                    className={`relative z-10 px-6 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
-                      workingLevel === 1
-                        ? 'text-accent'
-                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                    }`}
-                  >
-                    {t('settings.levelNormal')}
-                  </button>
-                  <button
-                    onClick={() => handleLevelChange(2)}
-                    className={`relative z-10 px-6 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
-                      workingLevel === 2
-                        ? 'text-warn'
-                        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-                    }`}
-                  >
-                    {t('settings.levelUltra')}
-                  </button>
-                </div>
-                <p className={`text-xs leading-relaxed max-w-xl ${levelFailed ? 'text-danger' : 'text-[var(--color-text-muted)]'}`}>
-                  {levelFailed ? t('settings.saveError') : workingLevel === 1 ? t('settings.levelNormalDesc') : t('settings.levelUltraDesc')}
-                </p>
-              </div>
-            </div>
-
-            {/* === Updates === */}
-            <SectionDivider label={t('settings.updates')} />
-
-            <div className="flex flex-col gap-4 mb-8">
-              <label className="flex items-center gap-3 cursor-pointer w-max">
-                <input
-                  type="checkbox"
-                  checked={config.auto_update_major}
-                  onChange={e => update('auto_update_major', e.target.checked, true)}
-                  className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
-                />
-                <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoUpdateMajor')}</span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer w-max">
-                <input
-                  type="checkbox"
-                  checked={config.auto_update_patch}
-                  onChange={e => update('auto_update_patch', e.target.checked, true)}
-                  className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
-                />
-                <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoUpdatePatch')}</span>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer w-max">
-                <input
-                  type="checkbox"
-                  checked={config.auto_browser_open}
-                  onChange={e => update('auto_browser_open', e.target.checked, true)}
-                  className="w-5 h-5 rounded border-[var(--color-border)] accent-accent cursor-pointer"
-                />
-                <span className="text-sm font-medium text-[var(--color-text-secondary)]">{t('settings.autoBrowserOpen')}</span>
-              </label>
-            </div>
-
-            {/* === Network === */}
-            <SectionDivider label={t('settings.network')} />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-              <div>
-                <label className={labelCls}>{t('settings.port')}</label>
-                <input type="text" inputMode="numeric" className={inputCls('port')} value={config.port}
-                  onChange={e => update('port', e.target.value)} />
-                {fieldNote('port')}
-              </div>
-              <div>
-                <label className={labelCls}>{t('settings.forcedIp')}</label>
-                <input type="text" className={inputCls('forced_ip')} value={config.forced_ip}
-                  onChange={e => update('forced_ip', e.target.value)} />
-                {fieldNote('forced_ip')}
-              </div>
-            </div>
-
-            <div className="mb-5">
-              <label className={labelCls}>{t('settings.subPath')}</label>
-              <input type="text" className={inputCls('subscription_path')} value={config.subscription_path}
-                onChange={e => update('subscription_path', e.target.value)} />
-              {fieldNote('subscription_path')}
-            </div>
-
-            {/* === Files === */}
-            <SectionDivider label={t('settings.files')} />
-
-            <div className="mb-5">
-              <label className={labelCls}>{t('settings.configsPath')}</label>
-              <input type="text" className={inputCls('configs_path')} value={config.configs_path}
-                onChange={e => update('configs_path', e.target.value)} />
-              {fieldNote('configs_path')}
-            </div>
-
-            {/* === Timing === */}
-            <SectionDivider label={t('settings.timing')} />
-
-            <div className="mb-5">
-              <label className={labelCls}>{t('settings.autoRefresh')}</label>
-              <AutoUpdateControl state={pollingState} onStateChange={onPollingStateChange} />
-            </div>
-
-            <div className="mb-5">
-              <label className={labelCls}>{t('settings.interval')}</label>
-              <input type="number" min={1} className={inputCls('update_interval_minutes')}
-                value={config.update_interval_minutes || ''}
-                onChange={e => update('update_interval_minutes', e.target.value === '' ? 0 : Number(e.target.value))} />
-              {fieldNote('update_interval_minutes')}
-            </div>
-
-            {/* === Sources === */}
-            <SectionDivider label={t('settings.sources')} />
-
-            <div className="flex gap-3 mb-4">
-              <input
-                placeholder={t('settings.sourcePlaceholder')}
-                value={newSource}
-                onChange={e => setNewSource(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addSource()}
-                className={`flex-1 px-4 py-3 rounded-xl text-sm bg-[var(--color-bg-input)] text-[var(--color-text-primary)] outline-none transition-all cursor-text border ${
-                  !isNewSourceValid && newSource
-                    ? 'border-red-500/50 focus:border-red-500/80 bg-red-500/5'
-                    : 'border-[var(--color-border)] focus:border-accent focus:ring-2 focus:ring-accent/20'
-                }`}
-              />
-              <button
-                onClick={addSource}
-                disabled={!isNewSourceValid}
-                className={`px-6 py-3 rounded-xl text-sm font-medium border-none transition-colors shadow-md ${
-                  isNewSourceValid
-                    ? 'bg-accent text-white hover:bg-accent-hover cursor-pointer'
-                    : 'bg-[var(--color-bg-input)] text-[var(--color-text-muted)] cursor-not-allowed opacity-60'
-                }`}
-              >
-                {t('settings.addSource')}
-              </button>
-            </div>
-            <div className="max-h-60 overflow-y-auto flex flex-col gap-2 rounded-xl">
-              {(config.sources || []).map((s, i) => (
-                <div key={s} className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl
-                                        bg-[var(--color-bg-input)] border border-[var(--color-border)]">
-                  <span className="text-sm text-[var(--color-text-primary)] overflow-hidden text-ellipsis whitespace-nowrap flex-1 font-mono">
-                    {s}
-                  </span>
-                  <button
-                    onClick={() => removeSource(i)}
-                    className="bg-transparent border-none text-red-400 font-medium text-sm cursor-pointer
-                               hover:text-red-300 transition-colors shrink-0"
-                  >
-                    {t('settings.removeSource')}
-                  </button>
-                </div>
-              ))}
+              </Button>
             </div>
           </div>
 
-          {version && (
-            <div className="text-center mt-6">
+          <AnimatePresence initial={false}>
+            {restart.required && (
+              <m.div
+                key="restart"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={spring.gentle}
+                className="mt-4"
+              >
+                <Badge tone="warn" icon={<Power className="size-3.5" aria-hidden="true" />}>{t('settings.restartRequired')}</Badge>
+              </m.div>
+            )}
+          </AnimatePresence>
+
+          <div className="mt-6 space-y-4">
+            <Card title={t('settings.general')} className="animate-enter" style={cardDelay(0)}>
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field
+                  label={t('settings.appName')}
+                  value={config.app_name}
+                  onChange={e => update('app_name', e.target.value)}
+                  error={errorNote('app_name')}
+                  warning={restartNote('app_name')}
+                />
+                <Field
+                  label={t('settings.subTitle')}
+                  value={config.subscription_title}
+                  onChange={e => update('subscription_title', e.target.value)}
+                  error={errorNote('subscription_title')}
+                />
+                <Field
+                  className="md:col-span-2"
+                  label={t('settings.description')}
+                  value={config.description_text}
+                  onChange={e => update('description_text', e.target.value)}
+                  error={errorNote('description_text')}
+                />
+              </div>
+              <div className="mt-4 border-t border-line pt-3">
+                <Switch
+                  label={t('settings.autoBrowserOpen')}
+                  checked={config.auto_browser_open}
+                  onChange={checked => update('auto_browser_open', checked, true)}
+                />
+              </div>
+            </Card>
+
+            <Card
+              title={t('settings.workingLevel')}
+              action={<Badge>{t('settings.appliedInstantly')}</Badge>}
+              className="animate-enter"
+              style={cardDelay(1)}
+            >
+              <SegmentedControl<CheckLevel>
+                label={t('settings.workingLevel')}
+                value={workingLevel === 2 ? 2 : 1}
+                onChange={handleLevelChange}
+                options={[
+                  { value: 1, label: t('settings.levelNormal') },
+                  { value: 2, label: t('settings.levelUltra') },
+                ]}
+              />
+              <p key={`${workingLevel}-${levelFailed}`} className={`mt-3 animate-fade text-sm ${levelFailed ? 'text-danger-text' : 'text-fg-2'}`}>
+                {levelFailed ? t('settings.saveError') : workingLevel === 1 ? t('settings.levelNormalDesc') : t('settings.levelUltraDesc')}
+              </p>
+            </Card>
+
+            <Card title={t('settings.autoRefresh')} className="animate-enter" style={cardDelay(2)}>
+              <AutoUpdateControl state={pollingState} onStateChange={onPollingStateChange} />
+              <div className="mt-5 border-t border-line pt-5">
+                <Field
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  className="max-w-56"
+                  label={t('settings.interval')}
+                  value={config.update_interval_minutes || ''}
+                  onChange={e => update('update_interval_minutes', e.target.value === '' ? 0 : Number(e.target.value))}
+                  error={errorNote('update_interval_minutes')}
+                />
+              </div>
+            </Card>
+
+            <Card title={t('settings.network')} className="animate-enter" style={cardDelay(3)}>
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field
+                  label={t('settings.port')}
+                  inputMode="numeric"
+                  value={config.port}
+                  onChange={e => update('port', e.target.value)}
+                  error={errorNote('port')}
+                  warning={restartNote('port')}
+                />
+                <Field
+                  label={t('settings.forcedIp')}
+                  value={config.forced_ip}
+                  onChange={e => update('forced_ip', e.target.value)}
+                  error={errorNote('forced_ip')}
+                />
+                <Field
+                  className="md:col-span-2"
+                  mono
+                  label={t('settings.subPath')}
+                  value={config.subscription_path}
+                  onChange={e => update('subscription_path', e.target.value)}
+                  error={errorNote('subscription_path')}
+                  warning={restartNote('subscription_path')}
+                />
+                <Field
+                  className="md:col-span-2"
+                  mono
+                  label={t('settings.configsPath')}
+                  value={config.configs_path}
+                  onChange={e => update('configs_path', e.target.value)}
+                  error={errorNote('configs_path')}
+                />
+              </div>
+            </Card>
+
+            <Card title={t('settings.updates')} className="animate-enter" style={cardDelay(4)}>
+              <div className="divide-y divide-line">
+                <Switch
+                  label={t('settings.autoUpdateMajor')}
+                  checked={config.auto_update_major}
+                  onChange={checked => update('auto_update_major', checked, true)}
+                />
+                <Switch
+                  label={t('settings.autoUpdatePatch')}
+                  checked={config.auto_update_patch}
+                  onChange={checked => update('auto_update_patch', checked, true)}
+                />
+              </div>
+            </Card>
+
+            <Card title={t('settings.sources')} className="animate-enter" style={cardDelay(5)}>
+              <form
+                className="flex flex-col gap-2 sm:flex-row"
+                onSubmit={event => {
+                  event.preventDefault();
+                  addSource();
+                }}
+              >
+                <input
+                  type="url"
+                  aria-label={t('settings.sourcePlaceholder')}
+                  placeholder={t('settings.sourcePlaceholder')}
+                  value={newSource}
+                  onChange={e => setNewSource(e.target.value)}
+                  aria-invalid={newSource && !isNewSourceValid ? true : undefined}
+                  className={`${inputClass(newSource && !isNewSourceValid ? 'error' : 'default', true)} flex-1`}
+                />
+                <Button type="submit" variant="primary" disabled={!isNewSourceValid} icon={<Plus className="size-4" aria-hidden="true" />}>
+                  {t('settings.addSource')}
+                </Button>
+              </form>
+
+              <ul className="mt-4 overflow-hidden rounded-md border border-line">
+                <AnimatePresence initial={false}>
+                  {(config.sources || []).map(source => (
+                    <m.li
+                      key={source}
+                      layout="position"
+                      variants={itemVariants}
+                      initial="hidden"
+                      animate="visible"
+                      exit="exit"
+                      transition={spring.gentle}
+                      className="flex items-center gap-3 border-b border-line bg-surface pl-4 last:border-b-0"
+                    >
+                      <span className="min-w-0 flex-1 truncate py-3 font-mono text-[13px] text-fg" title={source}>{source}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeSource(source)}
+                        aria-label={`${t('settings.removeSource')}: ${source}`}
+                        className="press flex size-11 shrink-0 items-center justify-center rounded-md text-fg-3 cursor-pointer hover:bg-danger-soft hover:text-danger-text"
+                      >
+                        <X className="size-4" aria-hidden="true" />
+                      </button>
+                    </m.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+            </Card>
+          </div>
+
+          <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-fg-3">
+            {version && (
               <a
                 href={`https://github.com/rom5n/whitelist-download/releases/tag/v${version}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-[var(--color-text-muted)] opacity-60 hover:opacity-100 hover:underline transition-opacity"
-                title="Open release in GitHub"
+                className="inline-flex h-11 items-center gap-1 rounded-md px-3 hover:text-fg"
               >
                 v{version}
+                <ExternalLink className="size-3.5" aria-hidden="true" />
               </a>
-            </div>
-          )}
+            )}
+            <a href="https://github.com/rom5n/whitelist-download" target="_blank" rel="noreferrer" className="inline-flex h-11 items-center gap-1.5 rounded-md px-3 hover:text-fg sm:hidden">
+              <GithubIcon className="size-3.5" />
+              GitHub
+            </a>
+            <a href="https://pay.cloudtips.ru/p/c6662c22" target="_blank" rel="noreferrer" className="inline-flex h-11 items-center gap-1.5 rounded-md px-3 hover:text-danger-text sm:hidden">
+              <Heart className="size-3.5" aria-hidden="true" />
+              {t('header.donate')}
+            </a>
+          </footer>
         </div>
       </div>
 
-      {/* A soft orange vignette along the edges of the window while a restart is required */}
+      {/* A soft orange vignette along the edges while a restart is required; it only fades in and out */}
       <div
         aria-hidden="true"
-        className={`pointer-events-none absolute inset-0 rounded-3xl transition-opacity duration-700 ease-in-out
-                    shadow-[inset_0_0_70px_0_color-mix(in_srgb,var(--color-warn)_20%,transparent)]
+        className={`pointer-events-none absolute inset-0 rounded-xl transition-opacity duration-700 ease-in-out
+                    shadow-[inset_0_0_70px_0_color-mix(in_srgb,var(--warn)_20%,transparent)]
                     ${restart.required ? 'opacity-100' : 'opacity-0'}`}
       />
     </div>

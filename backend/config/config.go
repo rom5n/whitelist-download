@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/rom5n/whitelist-download/backend/logging"
@@ -47,7 +48,6 @@ const (
 	SubscriptionTitle Field = "SubscriptionTitle"
 	DescriptionText   Field = "DescriptionText"
 	Port              Field = "Port"
-	ConfigsPath       Field = "ConfigsPath"
 	SubscriptionPath  Field = "SubscriptionPath"
 	UpdateInterval    Field = "UpdateInterval"
 	Sources           Field = "Sources"
@@ -68,7 +68,6 @@ type Config struct {
 	SubscriptionTitle string   `json:"subscription_title"`       // Subscription title in your client app
 	DescriptionText   string   `json:"description_text"`         // Description in your client app
 	Port              string   `json:"port" jsonDefault:"55000"` // App's port in your system
-	ConfigsPath       string   `json:"configs_path"`             // Path for configs. For example: configs.txt
 	SubscriptionPath  string   `json:"subscription_path"`        // Sub-path for subscription. For example: /sub - will be available in localhost:port/sub
 	UpdateInterval    int      `json:"update_interval_minutes"`  // Interval in minutes for configs auto update
 	Sources           []string `json:"sources"`                  // Configs sources
@@ -92,9 +91,8 @@ func newDefaultConfig() *Config {
 		SubscriptionTitle: "🌊 OpenSource VPN",
 		DescriptionText:   "⚡ Subscriptions from open sources",
 		Port:              "55000",
-		ConfigsPath:       "configs.txt",
 		SubscriptionPath:  "/sub",
-		UpdateInterval:    60,
+		UpdateInterval:    15,
 		ForcedIP:          "",
 		WorkingCheckLevel: 1,
 		AutoUpdateMajor:   false,
@@ -139,9 +137,27 @@ func Load() *Config {
 		logging.Log.Error("syntax error in config.json. fix the file or delete it to use default app config", zap.Error(err))
 		os.Exit(1)
 	}
+	migrateConfigsPath(fileData)
 
 	currentConfig.MarkStarted()
 	return currentConfig
+}
+
+// migrateConfigsPath handles the removed "configs_path" setting: the configs file always has the name
+// paths.ConfigsFileName now. A file with a custom name is renamed, so the subscription keeps working until the
+// next update rewrites it. The key itself is dropped from config.json on the next save.
+func migrateConfigsPath(fileData []byte) {
+	var legacy struct {
+		ConfigsPath string `json:"configs_path"`
+	}
+	if err := json.Unmarshal(fileData, &legacy); err != nil || strings.TrimSpace(legacy.ConfigsPath) == "" {
+		return
+	}
+
+	if err := paths.RenameDataFile(legacy.ConfigsPath, paths.ConfigsFileName); err != nil {
+		logging.Log.Warn("failed to migrate the configs file, it is recreated on the next update",
+			zap.String("configs_path", legacy.ConfigsPath), zap.Error(err))
+	}
 }
 
 func DefaultConfig(configPath string) *Config {
@@ -167,7 +183,6 @@ func (config *Config) Set(new *Config) error {
 	config.SubscriptionTitle = new.SubscriptionTitle
 	config.DescriptionText = new.DescriptionText
 	config.Port = new.Port
-	config.ConfigsPath = new.ConfigsPath
 	config.Sources = new.Sources
 	config.SubscriptionPath = new.SubscriptionPath
 	config.UpdateInterval = new.UpdateInterval
@@ -286,8 +301,6 @@ func (config *Config) RetrieveSafe(fields ...Field) *Config {
 			cfg.DescriptionText = config.DescriptionText
 		case Port:
 			cfg.Port = config.Port
-		case ConfigsPath:
-			cfg.ConfigsPath = config.ConfigsPath
 		case SubscriptionPath:
 			cfg.SubscriptionPath = config.SubscriptionPath
 		case UpdateInterval:

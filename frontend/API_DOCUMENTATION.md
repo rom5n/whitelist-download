@@ -79,7 +79,6 @@ Returns the serialized configuration object containing the application settings.
   "subscription_title": "🌊 OpenSource VPN",
   "description_text": "⚡ Subscriptions from open sources",
   "port": "55000",
-  "configs_path": "configs.txt",
   "subscription_path": "/sub",
   "update_interval_minutes": 60,
   "sources": [
@@ -94,6 +93,8 @@ Returns the serialized configuration object containing the application settings.
   "language": "auto"
 }
 ```
+The configs file is always `configs.txt` in the app data directory: the former `configs_path` setting was removed (a file with a custom name is renamed on start, the key is dropped from `config.json` on the next save and ignored if sent).
+
 Some fields are managed from the system tray and are read-only here: `POST /api/set-config` ignores them, so a stale settings form can't change them.
 - `paused_until` — the configs auto update pause (`0` - active, `-1` - paused until resumed, otherwise the Unix time of resuming). It can also be changed with the [`/api/polling/*`](#get-apipolling) endpoints.
 - `auto_start` — start the app with the system.
@@ -111,7 +112,6 @@ A JSON object representing the configuration structure with the fields to update
   "subscription_title": "🌊 OpenSource VPN",
   "description_text": "⚡ Subscriptions from open sources",
   "port": "55000",
-  "configs_path": "configs.txt",
   "subscription_path": "/sub",
   "update_interval_minutes": 60,
   "sources": [
@@ -126,7 +126,6 @@ A JSON object representing the configuration structure with the fields to update
 - `app_name` — not empty, no slashes.
 - `port` — a number from `1` to `65535`.
 - `subscription_path` — starts with `/`, no trailing slash, only letters, digits and `. _ ~ -`; the first segment can't be `api` or `assets`.
-- `configs_path` — not empty.
 - `update_interval_minutes` — from `1` to `10080` (one week).
 - `working_check_level` — `1` or `2`.
 - `forced_ip` — no spaces or slashes.

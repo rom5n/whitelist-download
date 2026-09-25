@@ -24,7 +24,7 @@ func newConfigEnv(t *testing.T) *configEnv {
 	testenv.Isolate(t)
 
 	cfg := &config.Config{
-		AppName: "App", Port: "55000", SubscriptionPath: "/sub", ConfigsPath: "configs.txt",
+		AppName: "App", Port: "55000", SubscriptionPath: "/sub",
 		UpdateInterval: 60, WorkingCheckLevel: config.WorkingCheckPing, Sources: []string{"https://example.com/a.txt"},
 	}
 	cfg.MarkStarted()
@@ -40,7 +40,7 @@ func (e *configEnv) post(t *testing.T, change func(*config.Config)) (*httptest.R
 	t.Helper()
 
 	sent := &config.Config{
-		AppName: "App", Port: "55000", SubscriptionPath: "/sub", ConfigsPath: "configs.txt",
+		AppName: "App", Port: "55000", SubscriptionPath: "/sub",
 		UpdateInterval: 60, WorkingCheckLevel: config.WorkingCheckPing, Sources: []string{"https://example.com/a.txt"},
 	}
 	change(sent)
@@ -124,7 +124,6 @@ func TestSetConfigRejectsInvalidValues(t *testing.T) {
 		"reserved path":    func(c *config.Config) { c.SubscriptionPath = "/api" },
 		"unknown level":    func(c *config.Config) { c.WorkingCheckLevel = 9 },
 		"empty app name":   func(c *config.Config) { c.AppName = "" },
-		"empty configs":    func(c *config.Config) { c.ConfigsPath = "" },
 		"forced ip spaces": func(c *config.Config) { c.ForcedIP = "1 2" },
 	} {
 		rec, _ := e.post(t, change)

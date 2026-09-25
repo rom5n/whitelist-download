@@ -32,7 +32,6 @@ func TestValidateRejects(t *testing.T) {
 		{"api path", func(c *Config) { c.SubscriptionPath = "/api" }, "subscription_path"},
 		{"nested api path", func(c *Config) { c.SubscriptionPath = "/api/sub" }, "subscription_path"},
 		{"assets path", func(c *Config) { c.SubscriptionPath = "/assets" }, "subscription_path"},
-		{"empty configs path", func(c *Config) { c.ConfigsPath = "" }, "configs_path"},
 		{"zero interval", func(c *Config) { c.UpdateInterval = 0 }, "update_interval_minutes"},
 		{"negative interval", func(c *Config) { c.UpdateInterval = -5 }, "update_interval_minutes"},
 		{"huge interval", func(c *Config) { c.UpdateInterval = MaxUpdateInterval + 1 }, "update_interval_minutes"},
@@ -99,7 +98,6 @@ func TestPendingRestart(t *testing.T) {
 	cfg.SubscriptionTitle = "changed"
 	cfg.UpdateInterval = 30
 	cfg.ForcedIP = "10.0.0.1"
-	cfg.ConfigsPath = "other.txt"
 	if got := cfg.PendingRestart(); len(got) != 0 {
 		t.Errorf("only start-time settings need a restart, got %v", got)
 	}

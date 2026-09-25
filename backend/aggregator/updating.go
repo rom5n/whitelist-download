@@ -50,7 +50,7 @@ func UpdateInProgress() bool {
 	return updatesInProgress.Load() > 0
 }
 
-func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
+func UpdateConfigs(ctx context.Context, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
 	if len(sources) == 0 {
 		return nil, errors.New("no sources provided")
 	}
@@ -83,7 +83,7 @@ func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain
 	sortedConfigs := SortConfigs(formattedConfigs)
 
 	logging.Log.Debug("updating cache and file")
-	if err = updateCacheAndFile(sortedConfigs, configsCache, configsPath); err != nil {
+	if err = updateCacheAndFile(sortedConfigs, configsCache); err != nil {
 		return nil, fmt.Errorf("failed to update cache and file: %w", err)
 	}
 
@@ -506,8 +506,8 @@ func SortConfigs(formattedConfigs []string) map[string][]string {
 	return sortedConfigs
 }
 
-func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache, configsPath string) error {
-	configsPath, err := paths.ResolveDataFile(configsPath)
+func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache) error {
+	configsPath, err := paths.ConfigsFile()
 	if err != nil {
 		logging.Log.Warn("failed to resolve configs path", zap.Error(err))
 	}

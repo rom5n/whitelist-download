@@ -41,10 +41,6 @@ func Validate(cfg *Config) error {
 		return invalid("subscription_path", "is reserved by the dashboard")
 	}
 
-	if strings.TrimSpace(cfg.ConfigsPath) == "" {
-		return invalid("configs_path", "must not be empty")
-	}
-
 	if cfg.UpdateInterval < 1 || cfg.UpdateInterval > MaxUpdateInterval {
 		return invalid("update_interval_minutes", fmt.Sprintf("must be from 1 to %d", MaxUpdateInterval))
 	}

@@ -56,7 +56,7 @@ func runPollingLoop(ctx context.Context, cfg *config.Config, scheduler *Schedule
 			continue
 		}
 
-		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.UpdateInterval, config.WorkingCheckLevel)
+		cfgSafe := cfg.RetrieveSafe(config.Sources, config.UpdateInterval, config.WorkingCheckLevel)
 
 		if !lastRun.IsZero() {
 			interval := time.Duration(max(cfgSafe.UpdateInterval, 1)) * intervalUnit
@@ -94,12 +94,11 @@ func runPollingLoop(ctx context.Context, cfg *config.Config, scheduler *Schedule
 }
 
 func poll(ctx context.Context, cfgSafe *config.Config, configsCache *domain.SafeConfigsCache, locator *geo_ip.Locator) (*UpdateResult, error) {
-	configsPath := cfgSafe.ConfigsPath
 	sources := cfgSafe.Sources
 	workingCheckLevel := cfgSafe.WorkingCheckLevel
 
 	logging.Log.Info("starting polling configs")
-	result, err := UpdateConfigs(ctx, configsPath, configsCache, sources, locator, workingCheckLevel)
+	result, err := UpdateConfigs(ctx, configsCache, sources, locator, workingCheckLevel)
 	if err != nil {
 		return nil, fmt.Errorf("polling configs: %w", err)
 	}

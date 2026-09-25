@@ -40,7 +40,7 @@ func Configs(cfg *config.Config, configsCache *domain.SafeConfigsCache) func(w h
 
 		country := parseCountryName(query.Get("country"))
 
-		configsPath := resolveConfigsPath(cfg.RetrieveSafe(config.ConfigsPath).ConfigsPath)
+		configsPath := configsFilePath()
 
 		var configs []string
 

@@ -3,11 +3,13 @@ package config
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/adrg/xdg"
 	"github.com/goccy/go-json"
 	"github.com/rom5n/whitelist-download/backend/internal/testenv"
+	"github.com/rom5n/whitelist-download/backend/paths"
 )
 
 func TestSetKeepsPause(t *testing.T) {
@@ -85,7 +87,7 @@ func TestSettersValidateAndPersist(t *testing.T) {
 	if err := cfg.SetUpdateInterval(0); !errors.Is(err, ErrInvalidInterval) {
 		t.Errorf("SetUpdateInterval(0) error = %v, want ErrInvalidInterval", err)
 	}
-	if cfg.UpdateInterval != 60 {
+	if cfg.UpdateInterval != 15 {
 		t.Errorf("invalid interval changed the config to %d", cfg.UpdateInterval)
 	}
 
@@ -109,4 +111,42 @@ func TestSettersValidateAndPersist(t *testing.T) {
 	if loaded.UpdateInterval != 360 {
 		t.Errorf("saved interval = %d, want 360", loaded.UpdateInterval)
 	}
+}
+
+func TestMigrateConfigsPath(t *testing.T) {
+	testenv.Isolate(t)
+
+	dataFile := func(name string) string {
+		path, err := xdg.DataFile(filepath.Join("whitelist-download", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if err := os.WriteFile(dataFile("custom.txt"), []byte("vless://a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	migrateConfigsPath([]byte(`{"configs_path": "custom.txt"}`))
+
+	data, err := os.ReadFile(dataFile(paths.ConfigsFileName))
+	if err != nil || string(data) != "vless://a\n" {
+		t.Fatalf("configs file was not migrated: %q, %v", data, err)
+	}
+	if _, err := os.Stat(dataFile("custom.txt")); !os.IsNotExist(err) {
+		t.Errorf("the old configs file is still there: %v", err)
+	}
+
+	// An existing configs file is never overwritten
+	if err := os.WriteFile(dataFile("other.txt"), []byte("vless://b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	migrateConfigsPath([]byte(`{"configs_path": "other.txt"}`))
+	if data, _ := os.ReadFile(dataFile(paths.ConfigsFileName)); string(data) != "vless://a\n" {
+		t.Errorf("the configs file was overwritten: %q", data)
+	}
+
+	// Configs without the key, or with the default name, are left alone
+	migrateConfigsPath([]byte(`{}`))
+	migrateConfigsPath([]byte(`{"configs_path": "configs.txt"}`))
 }

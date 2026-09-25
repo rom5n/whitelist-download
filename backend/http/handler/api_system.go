@@ -52,12 +52,11 @@ func UpdateConfigs(ctx context.Context, cfg *config.Config, configsCache *domain
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.WorkingCheckLevel)
-		configsPath := cfgSafe.ConfigsPath
+		cfgSafe := cfg.RetrieveSafe(config.Sources, config.WorkingCheckLevel)
 		sources := cfgSafe.Sources
 		workingCheckLevel := cfgSafe.WorkingCheckLevel
 
-		result, err := aggregator.UpdateConfigs(ctx, configsPath, configsCache, sources, locator, workingCheckLevel)
+		result, err := aggregator.UpdateConfigs(ctx, configsCache, sources, locator, workingCheckLevel)
 		scheduler.ReportUpdate(aggregator.UpdateEvent{Manual: true, Result: result, Err: err})
 		if err != nil {
 			logging.Log.Error("failed to force update configs", zap.Error(err))

@@ -141,7 +141,7 @@ func (t *tray) configFilePath() (string, error) {
 }
 
 func (t *tray) configsFilePath() (string, error) {
-	path, err := paths.ResolveDataFile(t.cfg.RetrieveSafe(config.ConfigsPath).ConfigsPath)
+	path, err := paths.ConfigsFile()
 	if err != nil {
 		// The path is still usable, the error is about migrating a legacy file
 		logging.Log.Warn("failed to resolve configs path", zap.Error(err))
@@ -155,7 +155,7 @@ func logFilePath() (string, error) {
 
 // configsFileName is the name of the file with configs, as shown in the menu.
 func (t *tray) configsFileName() string {
-	return filepath.Base(t.cfg.RetrieveSafe(config.ConfigsPath).ConfigsPath)
+	return paths.ConfigsFileName
 }
 
 // reveal shows a file in the file manager.

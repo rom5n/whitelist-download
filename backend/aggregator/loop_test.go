@@ -30,7 +30,7 @@ func startLoop(t *testing.T, updateInterval int, poll func(call int32) (*UpdateR
 	intervalUnit, retryDelay = 10*time.Millisecond, 20*time.Millisecond
 	t.Cleanup(func() { intervalUnit, retryDelay = previousUnit, previousRetry })
 
-	cfg := &config.Config{WorkingCheckLevel: config.WorkingCheckPing, UpdateInterval: updateInterval, ConfigsPath: "configs.txt"}
+	cfg := &config.Config{WorkingCheckLevel: config.WorkingCheckPing, UpdateInterval: updateInterval}
 	h := &loopHarness{scheduler: NewScheduler(cfg, &domain.Statistics{UpdateInterval: updateInterval}), events: make(chan UpdateEvent, 100)}
 	h.scheduler.Subscribe(func(event UpdateEvent) { h.events <- event })
 

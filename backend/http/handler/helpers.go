@@ -13,8 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-func resolveConfigsPath(configsPath string) string {
-	dataFilePath, err := paths.ResolveDataFile(configsPath)
+// configsFilePath returns the path of the configs file; the fallback path is used if it can't be resolved.
+func configsFilePath() string {
+	dataFilePath, err := paths.ConfigsFile()
 	if err != nil {
 		logging.Log.Warn("failed to resolve configs path", zap.Error(err))
 	}

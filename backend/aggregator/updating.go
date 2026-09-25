@@ -6,16 +6,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/adrg/xdg"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 	"github.com/rom5n/whitelist-download/backend/logging"
+	"github.com/rom5n/whitelist-download/backend/paths"
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"go.uber.org/zap"
-
-	"path/filepath"
 
 	"net"
 	"net/http"
@@ -371,12 +369,12 @@ func filterWorkingConfigs(ctx context.Context, uniqueConfigs []string, level int
 			}()
 
 			working, err := isWorking(config, level)
+			mu.Lock()
+			defer mu.Unlock()
 			if err != nil {
 				allErrors = errors.Join(allErrors, fmt.Errorf("failed to check working config: %w", err))
 			}
 			if working {
-				mu.Lock()
-				defer mu.Unlock()
 				successCount++
 				workingConfigs = append(workingConfigs, config)
 			}
@@ -423,7 +421,9 @@ func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip
 
 			parsedConfig, err := url.Parse(config)
 			if err != nil {
+				mu.Lock()
 				allErrors = errors.Join(allErrors, fmt.Errorf("failed to parse config url %s: %w", config, err))
+				mu.Unlock()
 				return
 			}
 
@@ -496,18 +496,9 @@ func SortConfigs(formattedConfigs []string) map[string][]string {
 }
 
 func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache, configsPath string) error {
-	dataFilePath, err := xdg.DataFile(filepath.Join("whitelist-download", filepath.Base(configsPath)))
-	if err == nil {
-		exePath, err := os.Executable()
-		if err == nil {
-			oldDataPath := filepath.Join(filepath.Dir(exePath), filepath.Base(configsPath))
-			if _, err := os.Stat(oldDataPath); err == nil {
-				if _, err := os.Stat(dataFilePath); os.IsNotExist(err) {
-					os.Rename(oldDataPath, dataFilePath)
-				}
-			}
-		}
-		configsPath = dataFilePath
+	configsPath, err := paths.ResolveDataFile(configsPath)
+	if err != nil {
+		logging.Log.Warn("failed to resolve configs path", zap.Error(err))
 	}
 
 	if len(sortedConfigs) > 0 {

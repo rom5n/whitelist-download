@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/rom5n/whitelist-download/backend/logging"
+	"github.com/rom5n/whitelist-download/backend/paths"
 	"go.uber.org/zap"
 
 	"github.com/adrg/xdg"
@@ -81,15 +82,8 @@ func Load() *Config {
 		os.Exit(1)
 	}
 
-	exePath, err := os.Executable()
-	if err == nil {
-		exeDir := filepath.Dir(exePath)
-		oldConfigPath := filepath.Join(exeDir, "config.json")
-		if _, err := os.Stat(oldConfigPath); err == nil {
-			if _, err := os.Stat(configPath); os.IsNotExist(err) {
-				os.Rename(oldConfigPath, configPath)
-			}
-		}
+	if err = paths.MigrateLegacy("config.json", configPath); err != nil {
+		logging.Log.Warn("failed to migrate legacy config.json", zap.Error(err))
 	}
 
 	fileData, err := os.ReadFile(configPath)

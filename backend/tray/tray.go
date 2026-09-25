@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"runtime"
-	
+
 	"github.com/getlantern/systray"
 	"github.com/rom5n/whitelist-download/backend/browser"
 	"github.com/rom5n/whitelist-download/backend/config"
@@ -22,7 +22,7 @@ func Run(ctx context.Context, cancel context.CancelFunc, cfg *config.Config, sta
 		} else {
 			systray.SetIcon(iconMac)
 		}
-		systray.SetTitle(cfg.AppName)
+		systray.SetTitle(cfg.RetrieveSafe(config.AppName).AppName)
 		systray.SetTooltip("Whitelist Download")
 
 		// Create menu items
@@ -39,10 +39,11 @@ func Run(ctx context.Context, cancel context.CancelFunc, cfg *config.Config, sta
 			for {
 				select {
 				case <-mOpen.ClickedCh:
-					browser.Open(cfg.Port, true)
+					browser.Open(cfg.RetrieveSafe(config.Port).Port, true)
 				case <-mUpdate.ClickedCh:
+					port := cfg.RetrieveSafe(config.Port).Port
 					go func() {
-						url := fmt.Sprintf("http://127.0.0.1:%s/api/update-configs", cfg.Port)
+						url := fmt.Sprintf("http://127.0.0.1:%s/api/update-configs", port)
 						resp, err := http.Get(url)
 						if err != nil {
 							logging.Log.Error("Failed to trigger force update from tray", zap.Error(err))

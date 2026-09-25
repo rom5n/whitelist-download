@@ -1,5 +1,5 @@
-# Stage 1: Build Frontend
-FROM node:20-alpine AS frontend-builder
+# Stage 1: Build Frontend (Vite writes it to backend/http/dist)
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile
@@ -17,12 +17,13 @@ RUN go mod download
 # Copy backend source
 COPY backend/ ./backend/
 
-# Copy frontend dist to backend/http/dist
-COPY --from=frontend-builder /app/frontend/dist ./backend/http/dist
+# Copy the built frontend, it is embedded into the binary
+COPY --from=frontend-builder /app/backend/http/dist ./backend/http/dist
 
-# Build
+# Build without the system tray (no desktop and no cgo in a container)
+ARG VERSION=dev
 WORKDIR /app/backend
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-s -w" -o whitelist-download main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -tags "with_utls headless" -ldflags "-s -w -X main.version=${VERSION}" -o whitelist-download .
 
 # Stage 3: Runner
 FROM alpine:latest

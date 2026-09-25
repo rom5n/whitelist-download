@@ -19,7 +19,6 @@ import (
 	"github.com/rom5n/whitelist-download/backend/http"
 	"github.com/rom5n/whitelist-download/backend/logging"
 	"github.com/rom5n/whitelist-download/backend/startup"
-	"github.com/rom5n/whitelist-download/backend/tray"
 	"github.com/rom5n/whitelist-download/backend/updater"
 )
 
@@ -67,7 +66,7 @@ func main() {
 		logging.Log.Info("graceful shutdown completed")
 	}
 
-	tray.Run(ctx, cancel, cfg, statistics, scheduler, updaterState, startApp)
+	run(ctx, cancel, cfg, statistics, scheduler, updaterState, startApp)
 }
 
 // handleShutdown Gracefully handles shutdown

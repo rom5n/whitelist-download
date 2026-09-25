@@ -23,6 +23,7 @@
   --animate-star-drift-slow: star-drift 120s linear infinite;
   --animate-star-drift-slower: star-drift 180s linear infinite;
   --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+  --animate-restart-blink: restart-blink 2s ease-in-out infinite;
 }
 
 @keyframes fade-in {
@@ -43,6 +44,20 @@
 @keyframes pulse-glow {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }
+}
+
+/* The restart button blinks smoothly while a restart is required */
+@keyframes restart-blink {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--color-warn) 45%, var(--color-border));
+    background-color: var(--color-bg-card);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    border-color: var(--color-warn);
+    background-color: color-mix(in srgb, var(--color-warn) 16%, var(--color-bg-card));
+    box-shadow: 0 0 18px 1px color-mix(in srgb, var(--color-warn) 40%, transparent);
+  }
 }
 
 /* === Base Styles === */

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '../i18n';
-import type { Statistics } from '../api';
+import type { PollingState, Statistics } from '../api';
+import { formatClock } from '../formatTime';
 
 interface StatisticsViewProps {
   stats: Statistics | null;
+  pollingState: PollingState | null;
 }
 
-export default function StatisticsView({ stats }: StatisticsViewProps) {
+export default function StatisticsView({ stats, pollingState }: StatisticsViewProps) {
   const { t } = useTranslation();
   const [now, setNow] = useState(Date.now());
 
@@ -38,6 +40,11 @@ export default function StatisticsView({ stats }: StatisticsViewProps) {
   };
 
   const formatNextUpdate = () => {
+    if (pollingState?.paused) {
+      return pollingState.forever
+        ? t('statsView.paused')
+        : `${t('statsView.paused')} · ${formatClock(pollingState.paused_until, now)}`;
+    }
     if (!stats.last_update || !stats.update_interval) return t('statsView.calculating');
     const nextUpdateMs = (stats.last_update + stats.update_interval * 60) * 1000;
     const diff = Math.max(0, Math.floor((nextUpdateMs - now) / 1000));

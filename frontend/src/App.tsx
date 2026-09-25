@@ -9,6 +9,7 @@ import StatisticsView from './components/StatisticsView';
 import { fetchStatistics, fetchSubscriptionLink, fetchConfigs, fetchUpdaterStatus, type Statistics, type UpdaterState } from './api';
 import { useTranslation } from './i18n';
 import { useTheme } from './ThemeContext';
+import { usePollingState } from './usePollingState';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -75,6 +76,7 @@ export default function App() {
   const [githubStars, setGithubStars] = useState<number | null>(null);
   
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+  const { state: pollingState, setState: setPollingState } = usePollingState();
 
   useEffect(() => {
     let timer: number;
@@ -262,6 +264,18 @@ export default function App() {
               {updaterState.status === 'reload' && t('update.reload')}
             </button>
           )}
+          {pollingState?.paused && (
+            <button
+              onClick={() => {
+                setMode('settings');
+                if (window.innerWidth < 768) setMobileView('content');
+              }}
+              className="hidden sm:flex px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition-colors items-center gap-2 border text-warn bg-warn/10 hover:bg-warn/20 border-warn/20"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              {t('pause.badge')}
+            </button>
+          )}
           {(updaterState?.status === 'available' || updaterState?.status === 'error') && (
             <button
               onClick={() => {
@@ -385,9 +399,9 @@ export default function App() {
               />
             )}
             
-            {mode === 'settings' && <SettingsView version={stats?.version} />}
+            {mode === 'settings' && <SettingsView version={stats?.version} pollingState={pollingState} onPollingStateChange={setPollingState} />}
             {mode === 'logs' && <LogsView />}
-            {mode === 'statistics' && <StatisticsView stats={stats} />}
+            {mode === 'statistics' && <StatisticsView stats={stats} pollingState={pollingState} />}
             {mode === 'update' && <UpdateView updaterState={updaterState} />}
           </ErrorBoundary>
         </div>

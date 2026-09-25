@@ -83,6 +83,7 @@ func Run(ctx context.Context, cancel context.CancelFunc, cfg *config.Config, sta
 	onReady := func() {
 		t.buildMenu()
 		t.refresh(true)
+		watchNativeLook(ctx)
 
 		go t.refreshLoop()
 		go func() {

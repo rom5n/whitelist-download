@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/adrg/xdg"
+	"github.com/rom5n/whitelist-download/backend/config"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 	"github.com/rom5n/whitelist-download/backend/logging"
@@ -14,8 +14,6 @@ import (
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"go.uber.org/zap"
-
-	"path/filepath"
 
 	"net"
 	"net/http"
@@ -40,11 +38,12 @@ type UpdateResult struct {
 	Copies           int
 	NotWorking       int
 	ConfigsByCountry map[string]int
+	CountryCodes     map[string]string // Key: country name, value: ISO 3166-1 alpha-2 code
 }
 
 var portPool chan int
 
-func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
+func UpdateConfigs(ctx context.Context, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
 	if len(sources) == 0 {
 		return nil, errors.New("no sources provided")
 	}
@@ -65,7 +64,7 @@ func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain
 	}
 
 	logging.Log.Debug("formatting configs")
-	formattedConfigs, configsByCountry, err := formatConfigs(ctx, workingConfigs, locator)
+	formattedConfigs, configsByCountry, countryCodes, err := formatConfigs(ctx, workingConfigs, locator)
 	if err != nil {
 		return nil, fmt.Errorf("failed to format configs: %w", err)
 	}
@@ -74,7 +73,7 @@ func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain
 	sortedConfigs := SortConfigs(formattedConfigs)
 
 	logging.Log.Debug("updating cache and file")
-	if err = updateCacheAndFile(sortedConfigs, configsCache, configsPath); err != nil {
+	if err = updateCacheAndFile(sortedConfigs, configsCache); err != nil {
 		return nil, fmt.Errorf("failed to update cache and file: %w", err)
 	}
 
@@ -83,6 +82,7 @@ func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain
 		Copies:           copies,
 		NotWorking:       len(configs) - len(workingConfigs),
 		ConfigsByCountry: configsByCountry,
+		CountryCodes:     countryCodes,
 	}
 
 	return result, nil
@@ -396,7 +396,7 @@ func filterWorkingConfigs(ctx context.Context, uniqueConfigs []string, level int
 	return workingConfigs, nil
 }
 
-func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip.Locator) ([]string, map[string]int, error) {
+func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip.Locator) ([]string, map[string]int, map[string]string, error) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var successCount int
@@ -405,6 +405,7 @@ func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip
 	workersCh := make(chan struct{}, maxWorkers)
 	formattedConfigs := make([]string, 0, len(workingConfigs))
 	configsByCountry := make(map[string]int)
+	countryCodes := make(map[string]string)
 
 	for i, config := range workingConfigs {
 		wg.Add(1)
@@ -427,13 +428,17 @@ func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip
 				return
 			}
 
-			name, flag := locator.GetCountryNameAndFlag(parsedConfig.Hostname())
+			country := locator.Lookup(parsedConfig.Hostname())
+			name, flag := country.Name, country.Flag
 			formatName(parsedConfig, name, flag, i)
 			mu.Lock()
 			defer mu.Unlock()
 
 			successCount++
 			configsByCountry[name]++
+			if country.Code != "" {
+				countryCodes[name] = country.Code
+			}
 			formattedConfigs = append(formattedConfigs, parsedConfig.String())
 		}()
 	}
@@ -441,14 +446,14 @@ func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip
 	wg.Wait()
 
 	if allErrors != nil && successCount < len(workingConfigs)/100*10 {
-		return nil, nil, fmt.Errorf("too many errors while formatting configs: %w", allErrors)
+		return nil, nil, nil, fmt.Errorf("too many errors while formatting configs: %w", allErrors)
 	}
 
 	if allErrors != nil {
 		logging.Log.Warn("some errors while formatting configs", zap.Error(allErrors))
 	}
 
-	return formattedConfigs, configsByCountry, nil
+	return formattedConfigs, configsByCountry, countryCodes, nil
 }
 
 func formatName(parsedConfig *url.URL, name string, flag string, i int) {
@@ -495,20 +500,8 @@ func SortConfigs(formattedConfigs []string) map[string][]string {
 	return sortedConfigs
 }
 
-func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache, configsPath string) error {
-	dataFilePath, err := xdg.DataFile(filepath.Join("whitelist-download", filepath.Base(configsPath)))
-	if err == nil {
-		exePath, err := os.Executable()
-		if err == nil {
-			oldDataPath := filepath.Join(filepath.Dir(exePath), filepath.Base(configsPath))
-			if _, err := os.Stat(oldDataPath); err == nil {
-				if _, err := os.Stat(dataFilePath); os.IsNotExist(err) {
-					os.Rename(oldDataPath, dataFilePath)
-				}
-			}
-		}
-		configsPath = dataFilePath
-	}
+func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache) error {
+	configsPath := config.ConfigsFilePath()
 
 	if len(sortedConfigs) > 0 {
 		configsCache.Set(sortedConfigs)

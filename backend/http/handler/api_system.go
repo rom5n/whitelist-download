@@ -52,19 +52,18 @@ func UpdateConfigs(ctx context.Context, cfg *config.Config, configsCache *domain
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.WorkingCheckLevel)
-		configsPath := cfgSafe.ConfigsPath
+		cfgSafe := cfg.RetrieveSafe(config.Sources, config.WorkingCheckLevel)
 		sources := cfgSafe.Sources
 		workingCheckLevel := cfgSafe.WorkingCheckLevel
 
-		result, err := aggregator.UpdateConfigs(ctx, configsPath, configsCache, sources, locator, workingCheckLevel)
+		result, err := aggregator.UpdateConfigs(ctx, configsCache, sources, locator, workingCheckLevel)
 		if err != nil {
 			logging.Log.Error("failed to force update configs", zap.Error(err))
 			http.Error(w, "failed to force update configs", http.StatusInternalServerError)
 			return
 		}
 
-		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry}
+		update := &domain.Statistics{LastUpdate: time.Now().Unix(), AmountConfigs: result.AmountConfigs, ConfigsByCountry: result.ConfigsByCountry, CountryCodes: result.CountryCodes}
 		statistics.Set(update)
 
 		logging.Log.Info("force update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking), zap.Int("working check leve", workingCheckLevel))

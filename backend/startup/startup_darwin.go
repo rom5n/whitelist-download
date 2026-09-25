@@ -4,39 +4,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/rom5n/whitelist-download/backend/logging"
-	"go.uber.org/zap"
-
-	"github.com/rom5n/whitelist-download/backend/config"
 )
 
-func Add(cfg *config.Config) {
-	err := func() error {
-		exePath, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("failed to get executable file path: %w", err)
-		}
+func plistFilePath(appName string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	return filepath.Join(homeDir, "Library", "LaunchAgents", appName+".plist"), nil
+}
 
-		exePath, err = filepath.Abs(exePath)
-		if err != nil {
-			return fmt.Errorf("failed to get absolute path of executable: %w", err)
-		}
+func enable(appName string) error {
+	exePath, err := executablePath()
+	if err != nil {
+		return err
+	}
 
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get user home directory: %w", err)
-		}
+	plistFile, err := plistFilePath(appName)
+	if err != nil {
+		return err
+	}
 
-		autostartDir := filepath.Join(homeDir, "Library", "LaunchAgents")
+	if err := os.MkdirAll(filepath.Dir(plistFile), 0755); err != nil {
+		return fmt.Errorf("failed to create autostart directory: %w", err)
+	}
 
-		if err := os.MkdirAll(autostartDir, 0755); err != nil {
-			return fmt.Errorf("failed to create autostart directory: %w", err)
-		}
-
-		plistFilePath := filepath.Join(autostartDir, cfg.AppName+".plist")
-
-		plistContent := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+	plistContent := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -50,19 +43,30 @@ func Add(cfg *config.Config) {
 	<true/>
 </dict>
 </plist>
-`, cfg.AppName, exePath)
+`, appName, exePath)
 
-		err = os.WriteFile(plistFilePath, []byte(plistContent), 0644)
-		if err != nil {
-			return fmt.Errorf("failed to write .plist file: %w", err)
-		}
-
-		return nil
-	}()
-
-	if err != nil {
-		logging.Log.Error("failed to add to startup", zap.Error(err))
-	} else {
-		logging.Log.Info("added to startup")
+	if err := os.WriteFile(plistFile, []byte(plistContent), 0644); err != nil {
+		return fmt.Errorf("failed to write .plist file: %w", err)
 	}
+
+	return nil
+}
+
+func disable(appName string) error {
+	plistFile, err := plistFilePath(appName)
+	if err != nil {
+		return err
+	}
+	if err := removeIfExists(plistFile); err != nil {
+		return fmt.Errorf("failed to remove .plist file: %w", err)
+	}
+	return nil
+}
+
+func isEnabled(appName string) (bool, error) {
+	plistFile, err := plistFilePath(appName)
+	if err != nil {
+		return false, err
+	}
+	return fileExists(plistFile)
 }

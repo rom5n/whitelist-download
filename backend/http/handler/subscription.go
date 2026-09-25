@@ -30,10 +30,10 @@ func setSubscriptionHeaders(w http.ResponseWriter, title, description string) {
 
 func Subscription(cfg *config.Config, configsCache *domain.SafeConfigsCache) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cfgSafe := cfg.RetrieveSafe(config.SubscriptionTitle, config.DescriptionText, config.ConfigsPath)
+		cfgSafe := cfg.RetrieveSafe(config.SubscriptionTitle, config.DescriptionText)
 		subscriptionTitle := cfgSafe.SubscriptionTitle
 		descriptionText := cfgSafe.DescriptionText
-		configsPath := resolveConfigsPath(cfgSafe.ConfigsPath)
+		configsPath := config.ConfigsFilePath()
 
 		offset, limit, country, err := retrieveParams(r)
 		if err != nil {

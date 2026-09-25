@@ -110,6 +110,7 @@ func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.Ser
 	mux.Handle("/api/update-configs", http.HandlerFunc(handler.UpdateConfigs(ctx, cfg, configsCache, statistics, locator)))
 	mux.Handle("/api/get-config", http.HandlerFunc(handler.Config(cfg)))
 	mux.Handle("/api/set-config", http.HandlerFunc(handler.SetConfig(ctx, cfg, updaterState, statistics, cancel)))
+	mux.Handle("/api/restart-status", http.HandlerFunc(handler.RestartStatus(cfg)))
 	mux.Handle("/api/logs", http.HandlerFunc(handler.Logs(logging.LogPath)))
 	mux.Handle("/api/configs", http.HandlerFunc(handler.Configs(cfg, configsCache)))
 	mux.Handle("/api/updater/status", http.HandlerFunc(handler.UpdaterStatus(updaterState)))

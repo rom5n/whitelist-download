@@ -35,23 +35,33 @@ func (l *Locator) Close() {
 	}
 }
 
-func (l *Locator) GetCountryNameAndFlag(address string) (string, string) {
+// Country describes the location of a server
+type Country struct {
+	Name string // English country name, "Unknown" if not resolved
+	Code string // ISO 3166-1 alpha-2 code, empty if not resolved
+	Flag string // Emoji flag, used in config names
+}
+
+var unknownCountry = Country{Name: "Unknown", Flag: "❓"}
+
+// Lookup resolves the country of a host name or IP address
+func (l *Locator) Lookup(address string) Country {
 	ips, err := net.LookupIP(address)
 	if err != nil || len(ips) == 0 {
-		return "Unknown", "❓"
+		return unknownCountry
 	}
 
-	ip := ips[0]
-
-	record, err := l.db.Country(ip)
+	record, err := l.db.Country(ips[0])
 	if err != nil || record.Country.IsoCode == "" {
-		return "Unknown", "❓"
+		return unknownCountry
 	}
 
-	isoCode := record.Country.IsoCode
-	countryName := record.Country.Names["en"]
-
-	return countryName, getEmojiFlag(isoCode)
+	isoCode := strings.ToUpper(record.Country.IsoCode)
+	return Country{
+		Name: record.Country.Names["en"],
+		Code: isoCode,
+		Flag: getEmojiFlag(isoCode),
+	}
 }
 
 func getEmojiFlag(isoCode string) string {

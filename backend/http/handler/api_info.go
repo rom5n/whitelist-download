@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -35,7 +36,9 @@ func Statistics(statistics *domain.Statistics) func(w http.ResponseWriter, r *ht
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
+		statistics.RLock()
 		err := json.NewEncoder(w).Encode(statistics)
+		statistics.RUnlock()
 		if err != nil {
 			logging.Log.Error("failed to get statistics", zap.Error(err))
 			http.Error(w, "failed to get statistics", http.StatusInternalServerError)
@@ -49,7 +52,9 @@ func Config(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
+		cfg.RLock()
 		err := json.NewEncoder(w).Encode(cfg)
+		cfg.RUnlock()
 		if err != nil {
 			logging.Log.Error("failed to get config", zap.Error(err))
 			http.Error(w, "failed to get config", http.StatusInternalServerError)
@@ -63,28 +68,58 @@ func SetConfig(ctx context.Context, cfg *config.Config, state *domain.SafeUpdate
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
 		newConfig := &config.Config{}
 		if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
 			logging.Log.Error("failed to decode config", zap.Error(err))
-			http.Error(w, "failed to decode config", http.StatusInternalServerError)
+			http.Error(w, "failed to decode config", http.StatusBadRequest)
 			return
 		}
 		defer r.Body.Close()
 
 		if err := cfg.Set(newConfig); err != nil {
+			if errors.Is(err, config.ErrInvalidConfig) {
+				logging.Log.Warn("rejected invalid config", zap.Error(err))
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			logging.Log.Error("failed to set config", zap.Error(err))
 			http.Error(w, "failed to set config", http.StatusInternalServerError)
 			return
 		}
 
 		stats.Lock()
-		stats.UpdateInterval = cfg.UpdateInterval
+		stats.UpdateInterval = cfg.RetrieveSafe(config.UpdateInterval).UpdateInterval
 		stats.Unlock()
 
 		logging.Log.Info("app config updated")
 
 		go updater.CheckUpdate(ctx, cfg, state, cancel)
 
-		w.WriteHeader(http.StatusOK)
+		writeRestartStatus(w, cfg)
+	}
+}
+
+// RestartStatusResponse tells the dashboard whether saved settings wait for a restart
+type RestartStatusResponse struct {
+	RestartRequired bool     `json:"restart_required"`
+	Fields          []string `json:"fields"`
+}
+
+func RestartStatus(cfg *config.Config) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeRestartStatus(w, cfg)
+	}
+}
+
+func writeRestartStatus(w http.ResponseWriter, cfg *config.Config) {
+	fields := cfg.RestartRequiredFields()
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(RestartStatusResponse{RestartRequired: len(fields) > 0, Fields: fields}); err != nil {
+		logging.Log.Error("failed to encode restart status", zap.Error(err))
 	}
 }

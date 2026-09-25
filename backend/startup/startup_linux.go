@@ -4,39 +4,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/rom5n/whitelist-download/backend/logging"
-	"go.uber.org/zap"
-
-	"github.com/rom5n/whitelist-download/backend/config"
 )
 
-func Add(cfg *config.Config) {
-	err := func() error {
-		exePath, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("failed to get executable file path: %w", err)
-		}
+func desktopFilePath(appName string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".config", "autostart", appName+".desktop"), nil
+}
 
-		exePath, err = filepath.Abs(exePath)
-		if err != nil {
-			return fmt.Errorf("failed to get absolute path of executable: %w", err)
-		}
+func enable(appName string) error {
+	exePath, err := executablePath()
+	if err != nil {
+		return err
+	}
 
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get user home directory: %w", err)
-		}
+	desktopFile, err := desktopFilePath(appName)
+	if err != nil {
+		return err
+	}
 
-		autostartDir := filepath.Join(homeDir, ".config", "autostart")
+	if err := os.MkdirAll(filepath.Dir(desktopFile), 0755); err != nil {
+		return fmt.Errorf("failed to create autostart directory: %w", err)
+	}
 
-		if err := os.MkdirAll(autostartDir, 0755); err != nil {
-			return fmt.Errorf("failed to create autostart directory: %w", err)
-		}
-
-		desktopFilePath := filepath.Join(autostartDir, cfg.AppName+".desktop")
-
-		desktopContent := fmt.Sprintf(`[Desktop Entry]
+	desktopContent := fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Exec=%s
 Hidden=false
@@ -44,19 +37,30 @@ NoDisplay=false
 X-GNOME-Autostart-enabled=true
 Name=%s
 Comment=Started automatically by Go program
-`, exePath, cfg.AppName)
+`, exePath, appName)
 
-		err = os.WriteFile(desktopFilePath, []byte(desktopContent), 0644)
-		if err != nil {
-			return fmt.Errorf("failed to write .desktop file: %w", err)
-		}
-
-		return nil
-	}()
-
-	if err != nil {
-		logging.Log.Error("failed to add to startup", zap.Error(err))
-	} else {
-		logging.Log.Info("added to startup")
+	if err := os.WriteFile(desktopFile, []byte(desktopContent), 0644); err != nil {
+		return fmt.Errorf("failed to write .desktop file: %w", err)
 	}
+
+	return nil
+}
+
+func disable(appName string) error {
+	desktopFile, err := desktopFilePath(appName)
+	if err != nil {
+		return err
+	}
+	if err := removeIfExists(desktopFile); err != nil {
+		return fmt.Errorf("failed to remove .desktop file: %w", err)
+	}
+	return nil
+}
+
+func isEnabled(appName string) (bool, error) {
+	desktopFile, err := desktopFilePath(appName)
+	if err != nil {
+		return false, err
+	}
+	return fileExists(desktopFile)
 }

@@ -22,8 +22,8 @@ func StartPollingConfigs(ctx context.Context, wg *sync.WaitGroup, cfg *config.Co
 			return
 		}
 
-		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.UpdateInterval, config.WorkingCheckLevel)
-		timeout := cfgSafe.UpdateInterval
+		cfgSafe := cfg.RetrieveSafe(config.Sources, config.WorkingCheckLevel)
+		startedAt := time.Now()
 		workingCheckLevel := cfgSafe.WorkingCheckLevel
 
 		result, err := poll(ctx, cfgSafe, configsCache, locator)
@@ -41,22 +41,40 @@ func StartPollingConfigs(ctx context.Context, wg *sync.WaitGroup, cfg *config.Co
 
 		updateStatistics(result, statistics)
 
-		select {
-		case <-ctx.Done():
+		if !waitNextPoll(ctx, cfg, startedAt) {
 			logging.Log.Debug("stopping polling configs due to context cancellation")
 			return
-		case <-time.After(time.Duration(timeout) * time.Minute):
+		}
+	}
+}
+
+// intervalCheckPeriod is how often the poller re-reads the update interval,
+// so a changed interval is applied without waiting for the old one to expire
+const intervalCheckPeriod = 30 * time.Second
+
+// waitNextPoll blocks until the configured interval has passed since startedAt. Returns false if ctx is done
+func waitNextPoll(ctx context.Context, cfg *config.Config, startedAt time.Time) bool {
+	for {
+		interval := time.Duration(cfg.RetrieveSafe(config.UpdateInterval).UpdateInterval) * time.Minute
+		remaining := time.Until(startedAt.Add(interval))
+		if remaining <= 0 {
+			return true
+		}
+
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(min(remaining, intervalCheckPeriod)):
 		}
 	}
 }
 
 func poll(ctx context.Context, cfgSafe *config.Config, configsCache *domain.SafeConfigsCache, locator *geo_ip.Locator) (*UpdateResult, error) {
-	configsPath := cfgSafe.ConfigsPath
 	sources := cfgSafe.Sources
 	workingCheckLevel := cfgSafe.WorkingCheckLevel
 
 	logging.Log.Info("starting polling configs")
-	result, err := UpdateConfigs(ctx, configsPath, configsCache, sources, locator, workingCheckLevel)
+	result, err := UpdateConfigs(ctx, configsCache, sources, locator, workingCheckLevel)
 	if err != nil {
 		return nil, fmt.Errorf("polling configs: %w", err)
 	}
@@ -69,6 +87,7 @@ func updateStatistics(result *UpdateResult, statistics *domain.Statistics) {
 	newStatistics.LastUpdate = time.Now().Unix()
 	newStatistics.AmountConfigs = result.AmountConfigs
 	newStatistics.ConfigsByCountry = result.ConfigsByCountry
+	newStatistics.CountryCodes = result.CountryCodes
 
 	statistics.Set(&newStatistics)
 }

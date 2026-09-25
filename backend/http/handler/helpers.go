@@ -3,32 +3,11 @@ package handler
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/adrg/xdg"
 )
-
-func resolveConfigsPath(configsPath string) string {
-	dataFilePath, err := xdg.DataFile(filepath.Join("whitelist-download", filepath.Base(configsPath)))
-	if err == nil {
-		exePath, err := os.Executable()
-		if err == nil {
-			oldDataPath := filepath.Join(filepath.Dir(exePath), filepath.Base(configsPath))
-			if _, err := os.Stat(oldDataPath); err == nil {
-				if _, err := os.Stat(dataFilePath); os.IsNotExist(err) {
-					os.Rename(oldDataPath, dataFilePath)
-				}
-			}
-		}
-		return dataFilePath
-	}
-	return configsPath
-}
 
 func retrieveParams(r *http.Request) (int, int, string, error) {
 	path := strings.TrimPrefix(r.URL.Path, "/sub")

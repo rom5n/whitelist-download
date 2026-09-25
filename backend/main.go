@@ -35,7 +35,8 @@ func main() {
 	defer logging.Log.Sync()
 
 	cfg := config.Load()
-	startup.Add(cfg)
+	startupCfg := cfg.RetrieveSafe(config.AppName, config.AutoStart)
+	startup.Sync(startupCfg.AppName, startupCfg.AutoStart)
 
 	configsCache := &domain.SafeConfigsCache{}
 	statistics := &domain.Statistics{StartedAt: time.Now().Unix(), Version: version, UpdateInterval: cfg.UpdateInterval}

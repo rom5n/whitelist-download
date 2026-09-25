@@ -11,6 +11,31 @@ import (
 	"github.com/rom5n/whitelist-download/backend/config"
 )
 
+// Remove deletes the app from the autostart.
+func Remove(cfg *config.Config) {
+	err := func() error {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get user home directory: %w", err)
+		}
+
+		appName := cfg.RetrieveSafe(config.AppName).AppName
+		plistFilePath := filepath.Join(homeDir, "Library", "LaunchAgents", appName+".plist")
+
+		if err = os.Remove(plistFilePath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove .plist file: %w", err)
+		}
+
+		return nil
+	}()
+
+	if err != nil {
+		logging.Log.Error("failed to remove from startup", zap.Error(err))
+	} else {
+		logging.Log.Info("removed from startup")
+	}
+}
+
 func Add(cfg *config.Config) {
 	err := func() error {
 		exePath, err := os.Executable()

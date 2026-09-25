@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,10 +43,20 @@ type UpdateResult struct {
 
 var portPool chan int
 
+var updatesInProgress atomic.Int32
+
+// UpdateInProgress reports whether configs are being updated right now (by the schedule or forced).
+func UpdateInProgress() bool {
+	return updatesInProgress.Load() > 0
+}
+
 func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
 	if len(sources) == 0 {
 		return nil, errors.New("no sources provided")
 	}
+
+	updatesInProgress.Add(1)
+	defer updatesInProgress.Add(-1)
 
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()

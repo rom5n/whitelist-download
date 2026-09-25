@@ -35,12 +35,13 @@ func main() {
 	defer logging.Log.Sync()
 
 	cfg := config.Load()
-	startup.Add(cfg)
+	startup.Apply(cfg)
 
 	configsCache := &domain.SafeConfigsCache{}
 	statistics := &domain.Statistics{StartedAt: time.Now().Unix(), Version: version, UpdateInterval: cfg.UpdateInterval}
 	locator := geo_ip.InitLocator()
 	updaterState := &domain.SafeUpdaterState{}
+	scheduler := aggregator.NewScheduler(cfg, statistics)
 
 	go handleShutdown(cancel)
 
@@ -48,7 +49,7 @@ func main() {
 		var wg sync.WaitGroup
 
 		wg.Add(1)
-		go aggregator.StartPollingConfigs(ctx, &wg, cfg, configsCache, statistics, locator)
+		go aggregator.StartPollingConfigs(ctx, &wg, cfg, configsCache, statistics, locator, scheduler)
 
 		browser.Open(cfg.Port, cfg.AutoBrowserOpen)
 
@@ -59,14 +60,14 @@ func main() {
 		}()
 
 		wg.Add(1)
-		http.Start(ctx, cancel, &wg, cfg, configsCache, statistics, locator, updaterState)
+		http.Start(ctx, cancel, &wg, cfg, configsCache, statistics, locator, updaterState, scheduler)
 
 		logging.Log.Info("waiting for tasks to finish...")
 		wg.Wait()
 		logging.Log.Info("graceful shutdown completed")
 	}
 
-	tray.Run(ctx, cancel, cfg, startApp)
+	tray.Run(ctx, cancel, cfg, statistics, scheduler, updaterState, startApp)
 }
 
 // handleShutdown Gracefully handles shutdown

@@ -14,39 +14,82 @@ import (
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 )
 
-func StartPollingConfigs(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator) {
+var (
+	// intervalUnit is the unit of Config.UpdateInterval. Tests shorten it.
+	intervalUnit = time.Minute
+	// retryDelay is the pause before the next attempt after a failed update. Tests shorten it.
+	retryDelay = 30 * time.Second
+)
+
+// pollFunc runs one configs update with the given (safe copy of the) config.
+type pollFunc func(ctx context.Context, cfgSafe *config.Config) (*UpdateResult, error)
+
+func StartPollingConfigs(ctx context.Context, wg *sync.WaitGroup, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator, scheduler *Scheduler) {
 	defer wg.Done()
+
+	runPollingLoop(ctx, cfg, scheduler, func(ctx context.Context, cfgSafe *config.Config) (*UpdateResult, error) {
+		return poll(ctx, cfgSafe, configsCache, locator)
+	}, func(result *UpdateResult) {
+		updateStatistics(result, statistics)
+	})
+}
+
+// runPollingLoop updates configs on schedule until ctx is cancelled. The next update is due UpdateInterval
+// after the previous one, so changing the interval or pausing and resuming updates reschedules it.
+// After a pause ends, configs are updated right away.
+func runPollingLoop(ctx context.Context, cfg *config.Config, scheduler *Scheduler, pollOnce pollFunc, onResult func(*UpdateResult)) {
+	var lastRun time.Time // Zero: update as soon as possible
+
 	for {
 		// Check context before starting new actions
 		if ctx.Err() != nil {
 			return
 		}
 
-		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.UpdateInterval, config.WorkingCheckLevel)
-		timeout := cfgSafe.UpdateInterval
-		workingCheckLevel := cfgSafe.WorkingCheckLevel
-
-		result, err := poll(ctx, cfgSafe, configsCache, locator)
-		if err != nil {
-			logging.Log.Error("failed to update configs, trying again in 30 seconds...", zap.Error(err))
-			select {
-			case <-ctx.Done():
+		if state := scheduler.State(); state.Paused {
+			logging.Log.Debug("configs auto update is paused", zap.Bool("forever", state.Forever), zap.Int64("until", state.PausedUntil))
+			if !scheduler.waitForResume(ctx, state) {
 				logging.Log.Debug("stopping polling configs due to context cancellation")
 				return
-			case <-time.After(30 * time.Second):
+			}
+			lastRun = time.Time{}
+			continue
+		}
+
+		cfgSafe := cfg.RetrieveSafe(config.ConfigsPath, config.Sources, config.UpdateInterval, config.WorkingCheckLevel)
+
+		if !lastRun.IsZero() {
+			interval := time.Duration(max(cfgSafe.UpdateInterval, 1)) * intervalUnit
+			if wait := time.Until(lastRun.Add(interval)); wait > 0 {
+				if !scheduler.wait(ctx, wait) {
+					logging.Log.Debug("stopping polling configs due to context cancellation")
+					return
+				}
+				// Woken up by the timer or by a change of the pause or the interval: check again
 				continue
 			}
 		}
-		logging.Log.Info("update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking), zap.Int("Working level", workingCheckLevel))
 
-		updateStatistics(result, statistics)
-
-		select {
-		case <-ctx.Done():
-			logging.Log.Debug("stopping polling configs due to context cancellation")
+		result, err := pollOnce(ctx, cfgSafe)
+		if ctx.Err() != nil {
+			// The update was interrupted by the shutdown, it is not a failure
 			return
-		case <-time.After(time.Duration(timeout) * time.Minute):
 		}
+
+		scheduler.ReportUpdate(UpdateEvent{Result: result, Err: err})
+
+		if err != nil {
+			logging.Log.Error("failed to update configs, trying again soon...", zap.Duration("delay", retryDelay), zap.Error(err))
+			if !scheduler.wait(ctx, retryDelay) {
+				logging.Log.Debug("stopping polling configs due to context cancellation")
+				return
+			}
+			continue
+		}
+		logging.Log.Info("update results", zap.Int("updated configs", result.AmountConfigs), zap.Int("copies skipped", result.Copies), zap.Int("Isn't working skipped", result.NotWorking), zap.Int("Working level", cfgSafe.WorkingCheckLevel))
+
+		onResult(result)
+		lastRun = time.Now()
 	}
 }
 

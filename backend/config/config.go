@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,31 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/goccy/go-json"
+)
+
+// Working check levels for Config.WorkingCheckLevel.
+const (
+	WorkingCheckPing    = 1 // TCP dial to the server (fast)
+	WorkingCheckSingBox = 2 // real request through a sing-box core (slow, more accurate)
+)
+
+// PausedForever is the Config.PausedUntil value for updates paused until resumed manually.
+const PausedForever int64 = -1
+
+// Values for Config.Language.
+const (
+	LanguageAuto = "auto" // Follow the system language
+	LanguageRU   = "ru"
+	LanguageEN   = "en"
+)
+
+// MaxUpdateInterval is the longest allowed Config.UpdateInterval (one week), in minutes.
+const MaxUpdateInterval = 7 * 24 * 60
+
+var (
+	ErrInvalidCheckLevel = errors.New("invalid working check level")
+	ErrInvalidInterval   = errors.New("invalid update interval")
+	ErrInvalidLanguage   = errors.New("invalid language")
 )
 
 type Field string
@@ -30,6 +56,10 @@ const (
 	AutoUpdateMajor   Field = "AutoUpdateMajor"
 	AutoUpdatePatch   Field = "AutoUpdatePatch"
 	AutoBrowserOpen   Field = "AutoBrowserOpen"
+	PausedUntil       Field = "PausedUntil"
+	AutoStart         Field = "AutoStart"
+	Notifications     Field = "Notifications"
+	Language          Field = "Language"
 )
 
 type Config struct {
@@ -47,6 +77,12 @@ type Config struct {
 	AutoUpdateMajor   bool     `json:"auto_update_major"`        // Auto download major updates
 	AutoUpdatePatch   bool     `json:"auto_update_patch"`        // Auto download bug fixes & improvements
 	AutoBrowserOpen   bool     `json:"auto_browser_open"`        // Automatically open default browser on start
+	PausedUntil       int64    `json:"paused_until"`             // Configs auto update pause: 0 - not paused, -1 (PausedForever) - until resumed manually, >0 - Unix time when it resumes
+	AutoStart         bool     `json:"auto_start"`               // Start the app together with the system
+	Notifications     bool     `json:"notifications"`            // Show desktop notifications about updates
+	Language          string   `json:"language"`                 // System tray language: "auto" (system language), "ru" or "en"
+
+	started startedWith // Settings the app was started with, see MarkStarted
 }
 
 // newDefaultConfig Returns default app config
@@ -64,6 +100,9 @@ func newDefaultConfig() *Config {
 		AutoUpdateMajor:   false,
 		AutoUpdatePatch:   true,
 		AutoBrowserOpen:   true,
+		AutoStart:         true,
+		Notifications:     true,
+		Language:          LanguageAuto,
 		Sources: []string{
 			"https://raw.githubusercontent.com/zieng2/wl/main/vless_lite.txt",
 			"https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
@@ -101,6 +140,7 @@ func Load() *Config {
 		os.Exit(1)
 	}
 
+	currentConfig.MarkStarted()
 	return currentConfig
 }
 
@@ -115,6 +155,7 @@ func DefaultConfig(configPath string) *Config {
 		os.Exit(1)
 	}
 
+	currentConfig.MarkStarted()
 	return currentConfig
 }
 
@@ -135,12 +176,73 @@ func (config *Config) Set(new *Config) error {
 	config.AutoUpdateMajor = new.AutoUpdateMajor
 	config.AutoUpdatePatch = new.AutoUpdatePatch
 	config.AutoBrowserOpen = new.AutoBrowserOpen
+	// PausedUntil, AutoStart, Notifications and Language are intentionally not copied: they are managed
+	// from the system tray via their own setters, so saving a (possibly stale) settings form can't change them.
 
 	if err := config.Save(); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 
 	return nil
+}
+
+// setAndSave sets the config field under the lock and persists the config; the field is restored if saving fails.
+func setAndSave[T any](config *Config, field *T, value T) error {
+	config.Lock()
+	defer config.Unlock()
+
+	previous := *field
+	*field = value
+	if err := config.Save(); err != nil {
+		*field = previous
+		return fmt.Errorf("save config: %w", err)
+	}
+
+	return nil
+}
+
+// SetWorkingCheckLevel changes the working check level and persists the config.
+func (config *Config) SetWorkingCheckLevel(level int) error {
+	if level != WorkingCheckPing && level != WorkingCheckSingBox {
+		return fmt.Errorf("%w: %d", ErrInvalidCheckLevel, level)
+	}
+
+	return setAndSave(config, &config.WorkingCheckLevel, level)
+}
+
+// SetPausedUntil changes the configs auto update pause (see Config.PausedUntil) and persists the config.
+func (config *Config) SetPausedUntil(until int64) error {
+	return setAndSave(config, &config.PausedUntil, until)
+}
+
+// SetUpdateInterval changes the configs auto update interval (in minutes) and persists the config.
+func (config *Config) SetUpdateInterval(minutes int) error {
+	if minutes < 1 || minutes > MaxUpdateInterval {
+		return fmt.Errorf("%w: %d minutes", ErrInvalidInterval, minutes)
+	}
+
+	return setAndSave(config, &config.UpdateInterval, minutes)
+}
+
+// SetAutoStart changes whether the app starts with the system and persists the config.
+func (config *Config) SetAutoStart(enabled bool) error {
+	return setAndSave(config, &config.AutoStart, enabled)
+}
+
+// SetNotifications changes whether desktop notifications are shown and persists the config.
+func (config *Config) SetNotifications(enabled bool) error {
+	return setAndSave(config, &config.Notifications, enabled)
+}
+
+// SetLanguage changes the system tray language (LanguageAuto, LanguageRU or LanguageEN) and persists the config.
+func (config *Config) SetLanguage(language string) error {
+	switch language {
+	case LanguageAuto, LanguageRU, LanguageEN:
+	default:
+		return fmt.Errorf("%w: %q", ErrInvalidLanguage, language)
+	}
+
+	return setAndSave(config, &config.Language, language)
 }
 
 func (config *Config) Save() error {
@@ -204,6 +306,14 @@ func (config *Config) RetrieveSafe(fields ...Field) *Config {
 			cfg.AutoUpdatePatch = config.AutoUpdatePatch
 		case AutoBrowserOpen:
 			cfg.AutoBrowserOpen = config.AutoBrowserOpen
+		case PausedUntil:
+			cfg.PausedUntil = config.PausedUntil
+		case AutoStart:
+			cfg.AutoStart = config.AutoStart
+		case Notifications:
+			cfg.Notifications = config.Notifications
+		case Language:
+			cfg.Language = config.Language
 		}
 	}
 

@@ -12,6 +12,27 @@ type Statistics struct {
 	Version          string         `json:"version"`
 }
 
+// Summary returns the amount of configs and the last update time (Unix seconds).
+func (v *Statistics) Summary() (amountConfigs int, lastUpdate int64) {
+	v.RLock()
+	defer v.RUnlock()
+	return v.AmountConfigs, v.LastUpdate
+}
+
+// AppVersion returns the app version.
+func (v *Statistics) AppVersion() string {
+	v.RLock()
+	defer v.RUnlock()
+	return v.Version
+}
+
+// SetUpdateInterval changes the configs update interval (in minutes) shown on the dashboard.
+func (v *Statistics) SetUpdateInterval(minutes int) {
+	v.Lock()
+	defer v.Unlock()
+	v.UpdateInterval = minutes
+}
+
 func (v *Statistics) Set(new *Statistics) {
 	v.Lock()
 	defer v.Unlock()

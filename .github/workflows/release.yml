@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag for manual release (e.g., v1.5.4)'
+        description: 'Version tag for manual release (e.g., v1.6.0)'
         required: true
-        default: 'v1.5.4'
+        default: 'v1.6.0'
 
 permissions:
   contents: write
@@ -53,13 +53,13 @@ jobs:
         env:
           CI: false
         run: |
-          yarn install
+          yarn install --frozen-lockfile
           yarn build
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23.x'
+          go-version-file: go.mod
 
       - name: Install Linux Dependencies
         if: matrix.os == 'linux'

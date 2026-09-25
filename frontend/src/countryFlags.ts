@@ -1,6 +1,5 @@
 /**
- * Country name to flag emoji mapping.
- * Used in the statistics display to show flag icons next to country names.
+ * Country name to flag emoji mapping: the backend names countries in English and marks configs with these emoji.
  */
 export const countryFlags: Record<string, string> = {
   "United States": "🇺🇸", "Germany": "🇩🇪", "Russia": "🇷🇺", "Netherlands": "🇳🇱", "France": "🇫🇷",
@@ -39,11 +38,22 @@ export const countryFlags: Record<string, string> = {
   "Gambia": "🇬🇲", "Guinea": "🇬🇳", "Guyana": "🇬🇾", "Haiti": "🇭🇹", "Liberia": "🇱🇷", "Unknown": "❓",
 };
 
+const REGIONAL_INDICATOR_A = 0x1f1e6;
+
 /**
- * Returns the flag emoji for a given country name.
- * Falls back to a white flag emoji if the country is not in the map.
- * @param countryName - The English name of the country
+ * Returns the lowercase ISO 3166-1 alpha-2 code of a flag emoji ("🇩🇪" → "de"), or null for anything else.
+ * Flags are drawn from SVG files by this code: emoji flags don't render on Windows.
  */
-export function getFlagEmoji(countryName: string): string {
-  return countryFlags[countryName] || "🏳️";
+export function flagEmojiToCode(emoji: string): string | null {
+  const points = Array.from(emoji.trim(), char => char.codePointAt(0) ?? 0);
+  if (points.length !== 2 || points.some(point => point < REGIONAL_INDICATOR_A || point > REGIONAL_INDICATOR_A + 25)) {
+    return null;
+  }
+  return String.fromCharCode(...points.map(point => point - REGIONAL_INDICATOR_A + 97));
+}
+
+/** Returns the lowercase ISO code of a country by its English name (as the backend reports it), or null. */
+export function getCountryCode(countryName: string): string | null {
+  const emoji = countryFlags[countryName];
+  return emoji ? flagEmojiToCode(emoji) : null;
 }

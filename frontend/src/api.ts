@@ -24,7 +24,6 @@ export interface AppConfig {
   subscription_title: string;
   description_text: string;
   port: string;
-  configs_path: string;
   logs_path: string;
   subscription_path: string;
   update_interval_minutes: number;
@@ -34,6 +33,28 @@ export interface AppConfig {
   auto_update_major: boolean;
   auto_update_patch: boolean;
   auto_browser_open: boolean;
+  /** Read-only here: managed via the polling endpoints, ignored by POST /api/set-config */
+  paused_until: number;
+  /** Managed from the system tray, ignored by POST /api/set-config */
+  auto_start: boolean;
+  /** Managed from the system tray, ignored by POST /api/set-config */
+  notifications: boolean;
+  /** Tray language: "auto", "ru" or "en". Managed from the system tray, ignored by POST /api/set-config */
+  language: string;
+}
+
+/** Working check levels for AppConfig.working_check_level */
+export type CheckLevel = 1 | 2;
+
+/** Configs auto update state from GET /api/polling */
+export interface PollingState {
+  paused: boolean;
+  /** Paused until resumed manually */
+  forever: boolean;
+  /** Unix time (seconds) when updates resume; 0 if not paused or paused forever */
+  paused_until: number;
+  /** 1 - ping test, 2 - sing-box core test */
+  working_check_level: number;
 }
 
 export interface UpdaterState {
@@ -53,6 +74,11 @@ export async function fetchStatistics(): Promise<Statistics> {
   const res = await fetch('/api/statistics');
   if (!res.ok) throw new Error('Failed to fetch statistics');
   return res.json();
+}
+
+/** The country as the API expects it in URLs: lowercase, spaces as dashes ("United States" → "united-states") */
+export function toCountryParam(country: string): string {
+  return country.toLowerCase().replace(/\s+/g, '-');
 }
 
 /**
@@ -91,19 +117,49 @@ export async function fetchConfig(): Promise<AppConfig> {
   return res.json();
 }
 
+/** Settings that were changed after the server started and only take effect after a restart */
+export interface RestartState {
+  required: boolean;
+  /** JSON keys of the settings, e.g. "port" */
+  fields: string[];
+}
+
+export type SaveResult =
+  | { ok: true; restart: RestartState }
+  | { ok: false; message: string };
+
 /**
- * Saves updated application config to the server.
+ * Saves updated application config to the server. The server validates it and rejects invalid values.
  * Endpoint: POST /api/set-config
  * @param config - The full config object to save
- * @returns true if save succeeded
+ * @param keepalive - Let the request finish even if the page is being closed
  */
-export async function saveConfig(config: AppConfig): Promise<boolean> {
-  const res = await fetch('/api/set-config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-  return res.ok;
+export async function saveConfig(config: AppConfig, keepalive = false): Promise<SaveResult> {
+  try {
+    const res = await fetch('/api/set-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+      keepalive,
+    });
+    if (!res.ok) {
+      const message = (await res.text()).trim();
+      return { ok: false, message: message || `HTTP ${res.status}` };
+    }
+    return { ok: true, restart: await res.json() };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Fetches the settings that await a restart.
+ * Endpoint: GET /api/restart-required
+ */
+export async function fetchRestartState(): Promise<RestartState> {
+  const res = await fetch('/api/restart-required');
+  if (!res.ok) throw new Error('Failed to fetch restart state');
+  return res.json();
 }
 
 /**
@@ -221,4 +277,46 @@ export async function fetchUpdaterStatus(): Promise<UpdaterState> {
 export async function triggerUpdaterDownload(): Promise<boolean> {
   const res = await fetch('/api/updater/download', { method: 'POST' });
   return res.ok;
+}
+
+async function pollingRequest(path: string, body?: object): Promise<PollingState> {
+  const res = await fetch(path, body === undefined ? undefined : {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Request to ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Fetches the configs auto update state (pause and working check level).
+ * Endpoint: GET /api/polling
+ */
+export function fetchPollingState(): Promise<PollingState> {
+  return pollingRequest('/api/polling');
+}
+
+/**
+ * Pauses the configs auto update. Pass a number of minutes, or 'forever' to pause until resumed.
+ * Endpoint: POST /api/polling/pause
+ */
+export function pauseUpdates(minutes: number | 'forever'): Promise<PollingState> {
+  return pollingRequest('/api/polling/pause', minutes === 'forever' ? { forever: true } : { minutes });
+}
+
+/**
+ * Resumes the configs auto update (an update starts right away).
+ * Endpoint: POST /api/polling/resume
+ */
+export function resumeUpdates(): Promise<PollingState> {
+  return pollingRequest('/api/polling/resume', {});
+}
+
+/**
+ * Changes the working check level. Applies from the next update.
+ * Endpoint: POST /api/polling/check-level
+ */
+export function setCheckLevel(level: CheckLevel): Promise<PollingState> {
+  return pollingRequest('/api/polling/check-level', { level });
 }

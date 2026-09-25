@@ -1,14 +1,22 @@
-import { useState, useEffect, useRef, useCallback, Component } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useEffectEvent, Component, lazy, Suspense } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import DetailsView from './components/DetailsView';
 import SettingsView from './components/SettingsView';
 import LogsView from './components/LogsView';
-import UpdateView from './components/UpdateView';
 import StatisticsView from './components/StatisticsView';
-import { fetchStatistics, fetchSubscriptionLink, fetchConfigs, fetchUpdaterStatus, type Statistics, type UpdaterState } from './api';
+import AppHeader from './components/AppHeader';
+import { BottomTabs } from './components/NavTabs';
+import { fetchStatistics, fetchSubscriptionLink, fetchConfigs, fetchUpdaterStatus, resumeUpdates, toCountryParam, type Statistics, type UpdaterState } from './api';
 import { useTranslation } from './i18n';
-import { useTheme } from './ThemeContext';
+import { usePollingState } from './usePollingState';
+import type { Attention, Mode } from './navigation';
+import { useRestartState } from './useRestartState';
+import Spinner from './ui/Spinner';
+
+// Release notes need a markdown renderer; it is loaded only when the update view is opened
+const UpdateView = lazy(() => import('./components/UpdateView'));
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -36,13 +44,18 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-8 text-[var(--color-text-primary)] bg-red-500/10 h-full flex flex-col justify-center">
-          <h2 className="text-xl font-bold text-red-500 mb-4">Something went wrong</h2>
-          <pre className="text-xs bg-black/50 p-4 rounded-xl text-left text-red-200 overflow-auto whitespace-pre-wrap">
-            {this.state.error?.toString()}
-            {'\n'}
-            {this.state.error?.stack}
-          </pre>
+        <div className="flex h-full flex-col justify-center p-8" role="alert">
+          <div className="mx-auto w-full max-w-2xl rounded-lg border border-danger/30 bg-danger-soft p-6">
+            <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold text-danger-text">
+              <TriangleAlert className="size-5" aria-hidden="true" />
+              Something went wrong
+            </h2>
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md bg-sunken p-4 font-mono text-xs text-fg-2">
+              {this.state.error?.toString()}
+              {'\n'}
+              {this.state.error?.stack}
+            </pre>
+          </div>
         </div>
       );
     }
@@ -50,37 +63,66 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-type RightPaneMode = 'details' | 'settings' | 'logs' | 'update' | 'statistics';
+const isNarrow = () => window.innerWidth < 768;
+
+/** Configs are fetched in pages of this size */
+const CHUNK_SIZE = 25;
+/** New configs are noticed through the statistics: they are cheap to poll */
+const STATS_POLL_MS = 10_000;
+
+/** A config without its name: the name (country, number) can change between updates, the server can't */
+const configKey = (raw: string) => raw.split('#')[0];
+
+const totalFor = (stats: Statistics, country: string | null) =>
+  country ? stats.configs_by_country[country] ?? 0 : stats.amount_configs;
 
 export default function App() {
-  const { t, language, setLanguage } = useTranslation();
-  const { theme, toggleTheme } = useTheme();
+  const { t } = useTranslation();
 
-  const [mode, setMode] = useState<RightPaneMode>('details');
+  const [mode, setMode] = useState<Mode>('details');
   const [mobileView, setMobileView] = useState<'sidebar' | 'content'>('sidebar');
-  
+
   const [stats, setStats] = useState<Statistics | null>(null);
-  const [countries, setCountries] = useState<string[]>([]);
   const [activeCountry, setActiveCountry] = useState<string | null>(null);
-  
+
   const [configs, setConfigs] = useState<string[]>([]);
-  const [activeConfigIndex, setActiveConfigIndex] = useState<number | null>(null);
+  // The selected config itself, not its position: it stays selected when the list is refreshed
+  const [selectedConfig, setSelectedConfig] = useState<string | null>(null);
   const [isLoadingConfigs, setIsLoadingConfigs] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  
+
   const [baseSubLink, setBaseSubLink] = useState('');
-  
+  const [loadError, setLoadError] = useState(false);
+
   const [offset, setOffset] = useState(1);
   const [limit, setLimit] = useState(0); // 0 means "No limit"
   const [githubStars, setGithubStars] = useState<number | null>(null);
-  
+
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
+  const { state: pollingState, setState: setPollingState } = usePollingState();
+  const { restart, setRestart } = useRestartState();
+  const [settingsActivity, setSettingsActivity] = useState<Attention | null>(null);
+
+  const paused = pollingState?.paused ?? false;
+  // The dot next to Settings: something runs there, or something there needs the user
+  const settingsAttention: Attention | undefined = settingsActivity === 'busy'
+    ? 'busy'
+    : settingsActivity === 'action' || restart.required || paused ? 'action' : undefined;
+
+  const resume = useCallback(async () => {
+    try {
+      setPollingState(await resumeUpdates());
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }, [setPollingState]);
 
   useEffect(() => {
-    let timer: number;
-    
+    // Polled twice a second: keep the previous object when nothing changed, so the app doesn't re-render for nothing
     const fetchUpdates = () => fetchUpdaterStatus().then(st => {
-      setUpdaterState(st);
+      setUpdaterState(prev => (prev && JSON.stringify(prev) === JSON.stringify(st) ? prev : st));
     }).catch(e => {
       setUpdaterState(prev => {
         if (prev?.status === 'installing' || prev?.status === 'downloading') {
@@ -90,24 +132,26 @@ export default function App() {
       });
       console.error(e);
     });
-    
+
     fetchUpdates();
-    timer = window.setInterval(fetchUpdates, 500);
+    const timer = window.setInterval(fetchUpdates, 500);
     return () => clearInterval(timer);
   }, []);
 
   // Caching mechanism
   const configsCache = useRef<Record<string, { data: string[], lastUpdate: number }>>({});
-  
-  const loadInitialData = async () => {
+  // Every load that replaces the list takes a new number; responses of older loads are dropped
+  const listRequest = useRef(0);
+
+  const loadInitialData = useCallback(async () => {
+    setLoadError(false);
     try {
       const statsData = await fetchStatistics();
       setStats(statsData);
-      setCountries(Object.keys(statsData.configs_by_country || {}));
-      
+
       const link = await fetchSubscriptionLink();
       setBaseSubLink(link);
-      
+
       try {
         const ghRes = await fetch('https://api.github.com/repos/rom5n/whitelist-download');
         if (ghRes.ok) {
@@ -119,39 +163,65 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadInitialData();
+  }, [loadInitialData]);
+
+  // New configs appear without reloading the page: the statistics change after every update.
+  // After a failed start the same poll retries the whole initial load.
+  const pollStats = useEffectEvent(() => {
+    if (document.visibilityState !== 'visible') return;
+    if (loadError) {
+      void loadInitialData();
+      return;
+    }
+    fetchStatistics()
+      .then(next => setStats(prev => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next)))
+      .catch(err => console.error(err));
+  });
+
+  useEffect(() => {
+    const timer = window.setInterval(pollStats, STATS_POLL_MS);
+    document.addEventListener('visibilitychange', pollStats);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', pollStats);
+    };
   }, []);
+
+  const countries = useMemo(() => Object.keys(stats?.configs_by_country ?? {}), [stats]);
 
   const loadConfigs = useCallback(async (isLoadMore = false) => {
     if (!stats) return;
-    
+
     const countryKey = activeCountry || 'ALL';
     const currentCache = configsCache.current[countryKey];
-    
+
     // Check if we can use cache (only for initial load of this country, not when loading more)
     if (!isLoadMore && currentCache && currentCache.lastUpdate >= stats.last_update) {
+      listRequest.current++;
       setConfigs(currentCache.data);
       // Assume we fetched everything up to currentCache.data.length
-      const totalAvailable = activeCountry ? stats.configs_by_country[activeCountry] : stats.amount_configs;
-      setHasMore(currentCache.data.length < totalAvailable);
+      setHasMore(currentCache.data.length < totalFor(stats, activeCountry));
       return;
     }
 
+    // Loading more continues the current list; anything else starts a new one
+    const request = isLoadMore ? listRequest.current : ++listRequest.current;
     setIsLoadingConfigs(true);
-    
-    const chunkLimit = 25;
+
     const currentOffset = isLoadMore ? configs.length + 1 : 1;
-    
+
     try {
-      const formattedCountry = activeCountry ? activeCountry.toLowerCase().replace(/\s+/g, '-') : undefined;
-      const res = await fetchConfigs(formattedCountry, currentOffset, chunkLimit);
+      const res = await fetchConfigs(activeCountry ? toCountryParam(activeCountry) : undefined, currentOffset, CHUNK_SIZE);
+      if (request !== listRequest.current) return;
       const newConfigs = res.configs || [];
-      
+
       let updatedConfigs: string[];
       if (isLoadMore) {
         updatedConfigs = [...configs, ...newConfigs];
@@ -161,237 +231,210 @@ export default function App() {
         setOffset(1);
         setLimit(0);
       }
-      
+
       setConfigs(updatedConfigs);
-      
-      const totalAvailable = activeCountry ? stats.configs_by_country[activeCountry] : stats.amount_configs;
-      setHasMore(updatedConfigs.length < totalAvailable);
-      
+      setHasMore(updatedConfigs.length < totalFor(stats, activeCountry));
+
       // Update cache
       configsCache.current[countryKey] = {
         data: updatedConfigs,
         lastUpdate: stats.last_update
       };
-      
+
     } catch (err) {
       console.error(err);
     } finally {
-      setIsLoadingConfigs(false);
+      if (request === listRequest.current) setIsLoadingConfigs(false);
     }
   }, [activeCountry, stats, configs]);
 
-  // When active country changes or stats update, load configs
-  useEffect(() => {
-    if (stats) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setActiveConfigIndex(null);
-      loadConfigs(false);
-    }
-  }, [activeCountry, stats, loadConfigs]);
+  // Reads the latest loadConfigs without making the effect below depend on it: loading more configs
+  // must not reload the list (and reset the selected config).
+  const reloadConfigs = useEffectEvent(() => {
+    loadConfigs(false);
+  });
 
-  const handleLoadMore = () => {
+  const statsReady = stats !== null;
+
+  // When the country changes (or the statistics first arrive), load its configs from the start
+  useEffect(() => {
+    if (statsReady) reloadConfigs();
+  }, [activeCountry, statsReady]);
+
+  // After an update, refetch the configs that are already shown, in place: the selection, the scroll
+  // position and the focus stay where they are.
+  const refreshConfigs = useEffectEvent(async () => {
+    if (!stats) return;
+    const request = ++listRequest.current;
+    const country = activeCountry;
+
+    try {
+      const res = await fetchConfigs(country ? toCountryParam(country) : undefined, 1, Math.max(configs.length, CHUNK_SIZE));
+      if (request !== listRequest.current) return;
+      const next = res.configs || [];
+
+      setConfigs(next);
+      setHasMore(next.length < totalFor(stats, country));
+      configsCache.current[country || 'ALL'] = { data: next, lastUpdate: stats.last_update };
+      // The selected config may have got a new name (country, number): show the fresh one
+      setSelectedConfig(prev => (prev === null ? prev : next.find(raw => configKey(raw) === configKey(prev)) ?? prev));
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  const shownUpdate = useRef<number | null>(null);
+  const lastUpdate = stats?.last_update;
+  useEffect(() => {
+    if (lastUpdate === undefined) return;
+    const first = shownUpdate.current === null;
+    shownUpdate.current = lastUpdate;
+    if (!first) void refreshConfigs();
+  }, [lastUpdate]);
+
+  const handleLoadMore = useCallback(() => {
     if (!isLoadingConfigs && hasMore) {
       loadConfigs(true);
     }
-  };
+  }, [isLoadingConfigs, hasMore, loadConfigs]);
 
   // Get max limit/offset for the DetailsView
-  const maxConfigs = stats 
-    ? (activeCountry ? stats.configs_by_country[activeCountry] || 0 : stats.amount_configs)
-    : 100;
+  const maxConfigs = stats ? totalFor(stats, activeCountry) : 100;
+
+  const activeConfigIndex = useMemo(() => {
+    if (selectedConfig === null) return null;
+    const key = configKey(selectedConfig);
+    return configs.findIndex(raw => configKey(raw) === key); // -1: no longer in the list, nothing is highlighted
+  }, [configs, selectedConfig]);
+
+  // Rows call selectConfig with their index; the callback stays the same, so the memoized rows don't re-render
+  const configsRef = useRef(configs);
+  useEffect(() => {
+    configsRef.current = configs;
+  }, [configs]);
+
+  const selectCountry = useCallback((c: string | null) => {
+    setActiveCountry(c);
+    setSelectedConfig(null);
+    setMode('details');
+    if (isNarrow()) setMobileView('content');
+  }, []);
+
+  const selectConfig = useCallback((i: number | null) => {
+    setSelectedConfig(i === null ? null : configsRef.current[i] ?? null);
+    setMode('details');
+    if (isNarrow()) setMobileView('content');
+  }, []);
+
+  const showList = useCallback(() => setMobileView('sidebar'), []);
+
+  const navigate = useCallback((next: Mode) => {
+    setMode(next);
+    if (next === 'details') setMobileView('sidebar');
+    else if (isNarrow()) setMobileView('content');
+  }, []);
+
+  const isDetails = mode === 'details';
 
   return (
-    <div className="h-screen flex flex-col text-[var(--color-text-primary)] overflow-hidden bg-[var(--color-bg-primary)]">
-      <div className="stars-layer">
-        <div className="stars-sm" />
-        <div className="stars-sm" />
-        <div className="stars-md" />
-        <div className="stars-md" />
-        <div className="stars-lg" />
-      </div>
+    <div className="flex h-dvh flex-col overflow-hidden text-fg">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-surface focus:px-4 focus:py-3 focus:shadow-lg"
+      >
+        Skip to content
+      </a>
 
-      <header className="h-16 flex-shrink-0 border-b border-[var(--color-border)] bg-[var(--color-glass)] backdrop-blur-md px-6 flex items-center justify-between z-10 relative">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent hidden sm:block mr-2">
-            {t('header.title')}
-          </h1>
+      <AppHeader
+        mode={mode}
+        onNavigate={navigate}
+        updaterState={updaterState}
+        paused={paused}
+        onResume={resume}
+        settingsAttention={settingsAttention}
+        githubStars={githubStars}
+      />
 
-          <a href="https://github.com/rom5n/whitelist-download" target="_blank" rel="noreferrer" 
-             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border-1 border-[var(--color-text-primary)] text-[var(--color-text-primary)] hover:bg-[var(--color-text-primary)] hover:text-[var(--color-bg-primary)] text-sm font-bold tracking-wide transition-colors cursor-pointer no-underline"
+      {/* The header and the sidebar are one surface (the body color); the content is a sheet on --bg,
+          told apart by its color and rounded corners, not by lines */}
+      <div className="relative flex min-h-0 flex-1">
+        {isDetails && (
+          <aside
+            aria-label={t('sidebar.list')}
+            className={`w-full shrink-0 md:w-80 lg:w-[22rem] animate-[fade_300ms_var(--ease-out)_60ms_both]
+                        ${mobileView === 'sidebar' ? 'flex' : 'hidden md:flex'}`}
           >
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-              <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
-            </svg>
-            <div className="flex items-center gap-1.5 border-l border-current pl-2">
-              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-amber-400 text-amber-400">
-                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-              </svg>
-              <span>{githubStars !== null ? githubStars : '...'}</span>
-            </div>
-          </a>
+            <Sidebar
+              countries={countries}
+              countryCounts={stats?.configs_by_country ?? {}}
+              activeCountry={activeCountry}
+              onCountrySelect={selectCountry}
+              configs={configs}
+              activeConfigIndex={activeConfigIndex}
+              onConfigSelect={selectConfig}
+              isLoadingConfigs={isLoadingConfigs}
+              onLoadMore={handleLoadMore}
+              hasMore={hasMore}
+              totalAvailableConfigs={maxConfigs}
+              ready={stats !== null}
+              loadError={loadError}
+              onRetry={loadInitialData}
+            />
+          </aside>
+        )}
 
-          <a href="https://pay.cloudtips.ru/p/c6662c22" target="_blank" rel="noreferrer" 
-            className="group cursor-pointer hover:bg-red-500 transition-colors flex items-center gap-2 px-3 py-1.5 rounded-lg border-1 border-red-500 text-red-500 hover:text-white font-medium text-sm">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 group-hover:fill-white group-hover:stroke-white transition-colors">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-            </svg>
-            {t('header.donate')}
-          </a>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          {(updaterState?.status === 'downloading' || updaterState?.status === 'installing' || updaterState?.status === 'reload') && (
-            <button
-              onClick={() => {
-                setMode('update');
-                if (window.innerWidth < 768) setMobileView('content');
-              }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition-colors flex items-center gap-2 border ${
-                updaterState.status === 'reload' 
-                  ? 'text-amber-500 bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20'
-                  : 'text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20 animate-pulse'
-              }`}
-            >
-              {updaterState.status === 'downloading' && (
-                <div className="flex items-center gap-2 relative">
-                  <span className="z-10">{t('update.downloading')} {updaterState.progress}%</span>
-                  <div className="absolute left-0 top-0 bottom-0 bg-blue-500/20 rounded z-0" style={{ width: `${updaterState.progress}%` }} />
-                </div>
-              )}
-              {updaterState.status === 'installing' && t('update.installing')}
-              {updaterState.status === 'reload' && t('update.reload')}
-            </button>
-          )}
-          {(updaterState?.status === 'available' || updaterState?.status === 'error') && (
-            <button
-              onClick={() => {
-                setMode('update');
-                if (window.innerWidth < 768) setMobileView('content');
-              }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer transition-colors flex items-center gap-2 border ${
-                updaterState.status === 'error'
-                  ? 'text-danger bg-danger/10 hover:bg-danger/20 border-danger/20'
-                  : 'text-accent bg-accent/10 hover:bg-accent/20 border-accent/20'
-              }`}
-            >
-              {updaterState.status === 'error' ? t('update.error') : `${t('update.newVersion')} ${updaterState.version}`}
-            </button>
-          )}
-          <button
-            onClick={() => {
-              setMode('details');
-              setMobileView('sidebar');
-            }}
-            title="Dashboard"
-            className={`p-2 rounded-lg cursor-pointer transition-colors ${mode === 'details' ? 'bg-accent/20 text-accent' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-[var(--color-text-primary)]'}`}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          </button>
-          
-          <button
-            onClick={() => {
-              setMode('logs');
-              if (window.innerWidth < 768) setMobileView('content');
-            }}
-            title={t('control.logs')}
-            className={`p-2 rounded-lg cursor-pointer transition-colors ${mode === 'logs' ? 'bg-accent/20 text-accent' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-[var(--color-text-primary)]'}`}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-          
-          <button
-            onClick={() => {
-              setMode('statistics');
-              if (window.innerWidth < 768) setMobileView('content');
-            }}
-            title={t('control.statistics')}
-            className={`p-2 rounded-lg cursor-pointer transition-colors ${mode === 'statistics' ? 'bg-accent/20 text-accent' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-[var(--color-text-primary)]'}`}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M18 20V10M12 20V4M6 20v-6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-
-          <button
-            onClick={() => {
-              setMode('settings');
-              if (window.innerWidth < 768) setMobileView('content');
-            }}
-            title={t('control.settings')}
-            className={`p-2 rounded-lg cursor-pointer transition-colors ${mode === 'settings' ? 'bg-accent/20 text-accent' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-[var(--color-text-primary)]'}`}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          </button>
-
-          <div className="w-px h-6 bg-[var(--color-border)] mx-1"></div>
-
-          <button
-            onClick={() => setLanguage(language === 'en' ? 'ru' : 'en')}
-            title="Switch Language"
-            className="px-3 py-1.5 rounded-lg text-sm font-bold cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-[var(--color-text-primary)] transition-colors"
-          >
-            {language === 'en' ? 'RU' : 'EN'}
-          </button>
-
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? t('theme.light') : t('theme.dark')}
-            className="p-2 rounded-lg cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-input)] hover:text-[var(--color-text-primary)] transition-colors"
-          >
-            {theme === 'dark' ? (
-              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current text-amber-400"><path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z" /></svg>
-            ) : (
-              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current text-indigo-500"><path fillRule="evenodd" d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 003.463-.69.75.75 0 01.981.98 10.503 10.503 0 01-9.694 6.46c-5.799 0-10.5-4.701-10.5-10.5 0-4.368 2.667-8.112 6.46-9.694a.75.75 0 01.818.162z" clipRule="evenodd" /></svg>
-            )}
-          </button>
-        </div>
-      </header>
-
-      <div className="flex-1 flex overflow-hidden relative z-10">
-        <div className={`w-full md:w-80 lg:w-96 flex-shrink-0 shadow-2xl z-20 h-full ${mobileView === 'sidebar' ? 'block' : 'hidden md:block'}`}>
-          <Sidebar
-            countries={countries}
-            activeCountry={activeCountry}
-            onCountrySelect={(c) => {
-              setActiveCountry(c);
-              setMode('details');
-              if (window.innerWidth < 768) setMobileView('content');
-            }}
-            configs={configs}
-            activeConfigIndex={activeConfigIndex}
-            onConfigSelect={(i) => {
-              setActiveConfigIndex(i);
-              setMode('details');
-              if (window.innerWidth < 768) setMobileView('content');
-            }}
-            isLoadingConfigs={isLoadingConfigs}
-            onLoadMore={handleLoadMore}
-            hasMore={hasMore}
-            totalAvailableConfigs={maxConfigs}
-          />
-        </div>
-        
-        <div className={`flex-1 flex flex-col min-w-0 ${mobileView === 'content' ? 'flex' : 'hidden md:flex'}`}>
+        <main
+          id="main"
+          tabIndex={-1}
+          className={`min-w-0 flex-1 flex-col overflow-hidden bg-bg outline-none md:mr-3 md:rounded-t-xl ${isDetails ? '' : 'md:ml-3'}
+                      ${isDetails && mobileView === 'sidebar' ? 'hidden md:flex' : 'flex'}`}
+        >
           <ErrorBoundary>
-            {mode === 'details' && (
-              <DetailsView
-                activeCountry={activeCountry}
-                activeConfigIndex={activeConfigIndex}
-                configs={configs}
-                baseSubLink={baseSubLink}
-                offset={offset}
-                limit={limit}
-                onOffsetChange={setOffset}
-                onLimitChange={setLimit}
-                maxConfigs={maxConfigs}
-              />
-            )}
-            
-            {mode === 'settings' && <SettingsView version={stats?.version} />}
-            {mode === 'logs' && <LogsView />}
-            {mode === 'statistics' && <StatisticsView stats={stats} />}
-            {mode === 'update' && <UpdateView updaterState={updaterState} />}
+            {/* Keyed by the section: each view enters with a short rise; nothing waits for an exit.
+                The subscription view animates itself, since it also changes with the selected config. */}
+            <div key={mode} className={`flex min-h-0 flex-1 flex-col ${isDetails ? '' : 'animate-enter'}`}>
+              {mode === 'details' && (
+                <DetailsView
+                  key={`${activeCountry ?? 'all'}-${selectedConfig !== null ? configKey(selectedConfig) : 'sub'}`}
+                  activeCountry={activeCountry}
+                  activeConfig={selectedConfig}
+                  baseSubLink={baseSubLink}
+                  offset={offset}
+                  limit={limit}
+                  onOffsetChange={setOffset}
+                  onLimitChange={setLimit}
+                  maxConfigs={maxConfigs}
+                  onBack={showList}
+                />
+              )}
+
+              {mode === 'settings' && (
+                <SettingsView
+                  version={stats?.version}
+                  pollingState={pollingState}
+                  onPollingStateChange={setPollingState}
+                  countries={stats?.configs_by_country ?? null}
+                  totalConfigs={stats?.amount_configs ?? 0}
+                  countriesError={loadError}
+                  onRetryCountries={loadInitialData}
+                  restart={restart}
+                  onRestartChange={setRestart}
+                  onActivityChange={setSettingsActivity}
+                />
+              )}
+              {mode === 'logs' && <LogsView />}
+              {mode === 'statistics' && <StatisticsView stats={stats} pollingState={pollingState} loadError={loadError} onRetry={loadInitialData} />}
+              {mode === 'update' && (
+                <Suspense fallback={<div className="flex flex-1 items-center justify-center text-fg-3"><Spinner className="size-6" label={t('settings.loading')} /></div>}>
+                  <UpdateView updaterState={updaterState} />
+                </Suspense>
+              )}
+            </div>
           </ErrorBoundary>
-        </div>
+        </main>
       </div>
+
+      <BottomTabs mode={mode} onNavigate={navigate} attention={{ settings: settingsAttention }} />
     </div>
   );
 }

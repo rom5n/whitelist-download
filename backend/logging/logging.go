@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/adrg/xdg"
+	"github.com/rom5n/whitelist-download/backend/paths"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -19,14 +20,8 @@ const maxLogSize = 25 * 1024 * 1024 // 25 MB
 func resolveLogPath() string {
 	stateFilePath, err := xdg.StateFile(filepath.Join("whitelist-download", "app.log"))
 	if err == nil {
-		exePath, err := os.Executable()
-		if err == nil {
-			oldDataPath := filepath.Join(filepath.Dir(exePath), "app.log")
-			if _, err := os.Stat(oldDataPath); err == nil {
-				if _, err := os.Stat(stateFilePath); os.IsNotExist(err) {
-					os.Rename(oldDataPath, stateFilePath)
-				}
-			}
+		if err := paths.MigrateLegacy("app.log", stateFilePath); err != nil {
+			log.Println("failed to migrate legacy log file:", err)
 		}
 		return stateFilePath
 	}

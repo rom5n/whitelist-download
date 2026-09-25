@@ -6,16 +6,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/adrg/xdg"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
 	"github.com/rom5n/whitelist-download/backend/logging"
+	"github.com/rom5n/whitelist-download/backend/paths"
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
 	"go.uber.org/zap"
-
-	"path/filepath"
 
 	"net"
 	"net/http"
@@ -24,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,10 +43,20 @@ type UpdateResult struct {
 
 var portPool chan int
 
-func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
+var updatesInProgress atomic.Int32
+
+// UpdateInProgress reports whether configs are being updated right now (by the schedule or forced).
+func UpdateInProgress() bool {
+	return updatesInProgress.Load() > 0
+}
+
+func UpdateConfigs(ctx context.Context, configsCache *domain.SafeConfigsCache, sources []string, locator *geo_ip.Locator, level int) (*UpdateResult, error) {
 	if len(sources) == 0 {
 		return nil, errors.New("no sources provided")
 	}
+
+	updatesInProgress.Add(1)
+	defer updatesInProgress.Add(-1)
 
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
@@ -74,7 +83,7 @@ func UpdateConfigs(ctx context.Context, configsPath string, configsCache *domain
 	sortedConfigs := SortConfigs(formattedConfigs)
 
 	logging.Log.Debug("updating cache and file")
-	if err = updateCacheAndFile(sortedConfigs, configsCache, configsPath); err != nil {
+	if err = updateCacheAndFile(sortedConfigs, configsCache); err != nil {
 		return nil, fmt.Errorf("failed to update cache and file: %w", err)
 	}
 
@@ -371,12 +380,12 @@ func filterWorkingConfigs(ctx context.Context, uniqueConfigs []string, level int
 			}()
 
 			working, err := isWorking(config, level)
+			mu.Lock()
+			defer mu.Unlock()
 			if err != nil {
 				allErrors = errors.Join(allErrors, fmt.Errorf("failed to check working config: %w", err))
 			}
 			if working {
-				mu.Lock()
-				defer mu.Unlock()
 				successCount++
 				workingConfigs = append(workingConfigs, config)
 			}
@@ -423,7 +432,9 @@ func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip
 
 			parsedConfig, err := url.Parse(config)
 			if err != nil {
+				mu.Lock()
 				allErrors = errors.Join(allErrors, fmt.Errorf("failed to parse config url %s: %w", config, err))
+				mu.Unlock()
 				return
 			}
 
@@ -495,19 +506,10 @@ func SortConfigs(formattedConfigs []string) map[string][]string {
 	return sortedConfigs
 }
 
-func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache, configsPath string) error {
-	dataFilePath, err := xdg.DataFile(filepath.Join("whitelist-download", filepath.Base(configsPath)))
-	if err == nil {
-		exePath, err := os.Executable()
-		if err == nil {
-			oldDataPath := filepath.Join(filepath.Dir(exePath), filepath.Base(configsPath))
-			if _, err := os.Stat(oldDataPath); err == nil {
-				if _, err := os.Stat(dataFilePath); os.IsNotExist(err) {
-					os.Rename(oldDataPath, dataFilePath)
-				}
-			}
-		}
-		configsPath = dataFilePath
+func updateCacheAndFile(sortedConfigs map[string][]string, configsCache *domain.SafeConfigsCache) error {
+	configsPath, err := paths.ConfigsFile()
+	if err != nil {
+		logging.Log.Warn("failed to resolve configs path", zap.Error(err))
 	}
 
 	if len(sortedConfigs) > 0 {

@@ -16,6 +16,7 @@ import (
 	"github.com/rom5n/whitelist-download/backend/logging"
 	"go.uber.org/zap"
 
+	"github.com/rom5n/whitelist-download/backend/aggregator"
 	"github.com/rom5n/whitelist-download/backend/config"
 	"github.com/rom5n/whitelist-download/backend/domain"
 	"github.com/rom5n/whitelist-download/backend/geo_ip"
@@ -33,12 +34,12 @@ type serverConfig struct {
 	WebLink          string
 }
 
-func Start(ctx context.Context, cancel context.CancelFunc, wg *sync.WaitGroup, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator, updaterState *domain.SafeUpdaterState) {
+func Start(ctx context.Context, cancel context.CancelFunc, wg *sync.WaitGroup, cfg *config.Config, configsCache *domain.SafeConfigsCache, statistics *domain.Statistics, locator *geo_ip.Locator, updaterState *domain.SafeUpdaterState, scheduler *aggregator.Scheduler) {
 	defer wg.Done()
 	serverCfg := getServerConfig(cfg)
 
 	mux := http.NewServeMux()
-	connectRoutes(ctx, cancel, mux, cfg, serverCfg, statistics, locator, configsCache, updaterState)
+	connectRoutes(ctx, cancel, mux, cfg, serverCfg, statistics, locator, configsCache, updaterState, scheduler)
 	startupLogs(serverCfg)
 
 	srv := &http.Server{
@@ -94,7 +95,7 @@ func getServerConfig(cfg *config.Config) *serverConfig {
 	}
 }
 
-func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.ServeMux, cfg *config.Config, serverCfg *serverConfig, statistics *domain.Statistics, locator *geo_ip.Locator, configsCache *domain.SafeConfigsCache, updaterState *domain.SafeUpdaterState) {
+func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.ServeMux, cfg *config.Config, serverCfg *serverConfig, statistics *domain.Statistics, locator *geo_ip.Locator, configsCache *domain.SafeConfigsCache, updaterState *domain.SafeUpdaterState, scheduler *aggregator.Scheduler) {
 	subPath := serverCfg.SubscriptionPath
 	ip := serverCfg.IP
 	port := serverCfg.Port
@@ -107,13 +108,18 @@ func connectRoutes(ctx context.Context, cancel context.CancelFunc, mux *http.Ser
 	mux.Handle("/api/subscription-link", http.HandlerFunc(handler.SubscriptionLink(cfg, ip, port)))
 	mux.Handle("/api/statistics", http.HandlerFunc(handler.Statistics(statistics)))
 	mux.Handle("/api/restart", http.HandlerFunc(handler.Restart(cancel)))
-	mux.Handle("/api/update-configs", http.HandlerFunc(handler.UpdateConfigs(ctx, cfg, configsCache, statistics, locator)))
+	mux.Handle("/api/update-configs", http.HandlerFunc(handler.UpdateConfigs(ctx, cfg, configsCache, statistics, locator, scheduler)))
 	mux.Handle("/api/get-config", http.HandlerFunc(handler.Config(cfg)))
-	mux.Handle("/api/set-config", http.HandlerFunc(handler.SetConfig(ctx, cfg, updaterState, statistics, cancel)))
+	mux.Handle("/api/restart-required", http.HandlerFunc(handler.RestartRequired(cfg)))
+	mux.Handle("/api/set-config", http.HandlerFunc(handler.SetConfig(ctx, cfg, updaterState, statistics, cancel, scheduler)))
 	mux.Handle("/api/logs", http.HandlerFunc(handler.Logs(logging.LogPath)))
 	mux.Handle("/api/configs", http.HandlerFunc(handler.Configs(cfg, configsCache)))
 	mux.Handle("/api/updater/status", http.HandlerFunc(handler.UpdaterStatus(updaterState)))
 	mux.Handle("/api/updater/download", http.HandlerFunc(handler.DownloadUpdate(updaterState, cancel)))
+	mux.Handle("/api/polling", http.HandlerFunc(handler.PollingState(scheduler)))
+	mux.Handle("/api/polling/pause", http.HandlerFunc(handler.PollingPause(scheduler)))
+	mux.Handle("/api/polling/resume", http.HandlerFunc(handler.PollingResume(scheduler)))
+	mux.Handle("/api/polling/check-level", http.HandlerFunc(handler.PollingCheckLevel(scheduler)))
 
 	distFS, err := fs.Sub(staticFiles, "dist")
 	if err != nil {

@@ -13,6 +13,11 @@ The server typically runs locally on port `55000`. Base URL for API calls is usu
     - [POST /api/update-configs](#post-apiupdate-configs)
     - [GET /api/logs](#get-apilogs)
     - [POST /api/restart](#post-apirestart)
+    - [GET /api/restart-required](#get-apirestart-required)
+    - [GET /api/polling](#get-apipolling)
+    - [POST /api/polling/pause](#post-apipollingpause)
+    - [POST /api/polling/resume](#post-apipollingresume)
+    - [POST /api/polling/check-level](#post-apipollingcheck-level)
 2. [Subscription Endpoints](#subscription-endpoints)
     - [GET /<sub_path>](#get-sub_path)
 
@@ -74,7 +79,6 @@ Returns the serialized configuration object containing the application settings.
   "subscription_title": "🌊 OpenSource VPN",
   "description_text": "⚡ Subscriptions from open sources",
   "port": "55000",
-  "configs_path": "configs.txt",
   "subscription_path": "/sub",
   "update_interval_minutes": 60,
   "sources": [
@@ -82,12 +86,23 @@ Returns the serialized configuration object containing the application settings.
     "..."
   ],
   "forced_ip": "",
-  "working_check_level": 1
+  "working_check_level": 1,
+  "paused_until": 0,
+  "auto_start": true,
+  "notifications": true,
+  "language": "auto"
 }
 ```
+The configs file is always `configs.txt` in the app data directory: the former `configs_path` setting was removed (a file with a custom name is renamed on start, the key is dropped from `config.json` on the next save and ignored if sent).
+
+Some fields are managed from the system tray and are read-only here: `POST /api/set-config` ignores them, so a stale settings form can't change them.
+- `paused_until` — the configs auto update pause (`0` - active, `-1` - paused until resumed, otherwise the Unix time of resuming). It can also be changed with the [`/api/polling/*`](#get-apipolling) endpoints.
+- `auto_start` — start the app with the system.
+- `notifications` — show desktop notifications about updates.
+- `language` — system tray language: `auto` (follow the system), `ru` or `en`.
 
 ### POST `/api/set-config`
-Updates the application configuration.
+Updates the application configuration. The dashboard calls it on every change of a setting (text fields after a pause in typing), so it validates the values and rejects the ones the server could not start with.
 
 **Request Body (JSON):**
 A JSON object representing the configuration structure with the fields to update. Must follow the exact same schema as `/api/get-config`:
@@ -97,7 +112,6 @@ A JSON object representing the configuration structure with the fields to update
   "subscription_title": "🌊 OpenSource VPN",
   "description_text": "⚡ Subscriptions from open sources",
   "port": "55000",
-  "configs_path": "configs.txt",
   "subscription_path": "/sub",
   "update_interval_minutes": 60,
   "sources": [
@@ -108,9 +122,20 @@ A JSON object representing the configuration structure with the fields to update
 }
 ```
 
+**Validation:**
+- `app_name` — not empty, no slashes.
+- `port` — a number from `1` to `65535`.
+- `subscription_path` — starts with `/`, no trailing slash, only letters, digits and `. _ ~ -`; the first segment can't be `api` or `assets`.
+- `update_interval_minutes` — from `1` to `10080` (one week).
+- `working_check_level` — `1` or `2`.
+- `forced_ip` — no spaces or slashes.
+- `sources` — absolute `http(s)` URLs.
+
 **Response:**
-- `200 OK` on success.
-- `500 Internal Server Error` on failure.
+- `200 OK` with the [restart state](#get-apirestart-required) (JSON) on success.
+- `400 Bad Request` if the body is invalid or a value fails validation; the body explains which field is wrong, e.g. `invalid config: port must be a number from 1 to 65535`. Nothing is saved.
+- `405 Method Not Allowed` for methods other than `POST`.
+- `500 Internal Server Error` if the config could not be saved.
 
 ### POST `/api/update-configs`
 Forces an immediate update and re-aggregation of configurations from external sources.
@@ -129,6 +154,74 @@ Initiates a graceful restart of the backend application (useful after updating c
 
 **Response:**
 Closes the connection as the server restarts.
+
+### GET `/api/restart-required`
+Returns the settings that were changed after the server started and only take effect after a restart (`app_name`, `port`, `subscription_path`). Changing a value back cancels it, and the state is reset by a restart. The dashboard uses it to highlight the restart button.
+
+**Response (JSON):**
+```json
+{ "required": true, "fields": ["port"] }
+```
+
+### GET `/api/polling`
+Returns the state of the configs auto update: whether it is paused and which working check level is used. The system tray and the dashboard share this state, so a change made in one is visible in the other.
+
+**Response (JSON):**
+```json
+{
+  "paused": true,
+  "forever": false,
+  "paused_until": 1790350670,
+  "working_check_level": 1
+}
+```
+- `paused` — auto update is paused. A manual update (`/api/update-configs`) still works while paused.
+- `forever` — paused until resumed manually.
+- `paused_until` — Unix time (seconds) when the auto update resumes; `0` if not paused or `forever` is `true`.
+- `working_check_level` — `1` - ping test, `2` - sing-box core test.
+
+The pause is stored in `config.json`, so it survives restarts. An expired pause is treated as not paused.
+
+### POST `/api/polling/pause`
+Pauses the configs auto update for a while or until resumed.
+
+**Request Body (JSON):**
+```json
+{ "minutes": 60 }
+```
+or
+```json
+{ "forever": true }
+```
+- `minutes` — pause duration in minutes, from `1` to `525600` (one year).
+- `forever` — pause until `/api/polling/resume` is called; takes precedence over `minutes`.
+
+**Response:**
+- `200 OK` with the updated state (same JSON as `GET /api/polling`).
+- `400 Bad Request` if the body is invalid or the duration is out of range.
+- `405 Method Not Allowed` for methods other than `POST`.
+- `500 Internal Server Error` if the config could not be saved.
+
+### POST `/api/polling/resume`
+Cancels the pause. If updates were paused, an update starts right away.
+
+**Response:**
+- `200 OK` with the updated state (same JSON as `GET /api/polling`).
+- `500 Internal Server Error` if the config could not be saved.
+
+### POST `/api/polling/check-level`
+Changes the working check level. It is saved to `config.json` and applies from the next update.
+
+**Request Body (JSON):**
+```json
+{ "level": 2 }
+```
+- `level` — `1` for the ping test (fast), `2` for the sing-box core test (slower, more accurate).
+
+**Response:**
+- `200 OK` with the updated state (same JSON as `GET /api/polling`).
+- `400 Bad Request` if the body is invalid or the level is not `1` or `2`.
+- `500 Internal Server Error` if the config could not be saved.
 
 ---
 

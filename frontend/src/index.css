@@ -3,169 +3,425 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* === Tailwind v4 Theme Config === */
-@theme {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-
-  /* Accent & brand colors */
-  --color-accent: #3b82f6;
-  --color-accent-hover: #2563eb;
-  --color-success: #22c55e;
-  --color-success-hover: #16a34a;
-  --color-danger: #ef4444;
-  --color-danger-hover: #dc2626;
-  --color-warn: #f59e0b;
-
-  /* Custom animations */
-  --animate-fade-in: fade-in 0.3s ease-out;
-  --animate-slide-up: slide-up 0.3s ease-out;
-  --animate-star-drift: star-drift 80s linear infinite;
-  --animate-star-drift-slow: star-drift 120s linear infinite;
-  --animate-star-drift-slower: star-drift 180s linear infinite;
-  --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+/* ==========================================================================
+   Fonts — self-hosted (the dashboard must work without Google Fonts),
+   only the Latin and Cyrillic subsets.
+   ========================================================================== */
+@font-face {
+  font-family: 'Onest';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/onest/files/onest-cyrillic-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Onest';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/onest/files/onest-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-cyrillic-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-@keyframes fade-in {
+/* ==========================================================================
+   Design tokens
+   Theme-dependent values live in plain variables (--bg, --fg, ...) set per theme
+   below; @theme maps them to Tailwind utilities (bg-bg, text-fg, border-line, ...).
+   ========================================================================== */
+@theme inline {
+  --font-sans: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  /* Surfaces: bg (page) < surface (cards, and the app chrome: header and sidebar) < raised (controls on cards);
+     sunken is for wells; tab is the selected item of a segmented group */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-tab: var(--tab);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  /* Text: fg (primary) > fg-2 (secondary) > fg-3 (hints); all pass WCAG AA on bg and surface */
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+
+  /* The only accent. accent — fills, accent-fg — text on fills, accent-text — accent-colored text */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: #ffffff;
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+
+  /* Status colors: *-text passes AA as text, *-soft is a tinted background */
+  --color-success: var(--success);
+  --color-success-text: var(--success-text);
+  --color-success-soft: var(--success-soft);
+  --color-warn: var(--warn);
+  --color-warn-text: var(--warn-text);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-text: var(--danger-text);
+  --color-danger-soft: var(--danger-soft);
+
+  /* Radii: sm — chips, badges, small controls; md — buttons, inputs; lg — cards; xl — panels */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  /* The QR code window: a rounded "porthole" */
+  --radius-porthole: 44px;
+
+  /* Elevation */
+  --shadow-xs: var(--elev-xs);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+
+  /* Type scale: 12 / 14 / 16 / 20 / 28 */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-3xl: 1.75rem;
+  --text-3xl--line-height: 2.125rem;
+
+  /* Motion: small reactions 150–250ms, larger transitions 300–450ms */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* A spring (stiffness ≈ 300, damping ≈ 22) sampled into linear(): a slight, soft overshoot */
+  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.077, 1.121 24.4%, 1.149 26.9%, 1.159 29.6%, 1.155 32.5%, 1.137 35.9%, 1.058 45.3%, 1.019 52.5%, 0.996 60.9%, 0.992 71.1%, 1.001 91.1%, 1);
+
+  --animate-enter: enter 380ms var(--ease-out) both;
+  --animate-fade: fade 220ms var(--ease-out) both;
+  --animate-pop: pop 260ms var(--ease-spring) both;
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+  --animate-spin: spin 0.8s linear infinite;
+  /* A quick flash (~150ms up) that fades out slower (~450ms) */
+  --animate-flash: flash 600ms linear both;
+}
+
+:root,
+.dark {
+  color-scheme: dark;
+  --bg: #0b0d12;
+  --surface: #12151c;
+  --raised: #1a1e27;
+  --sunken: #0e1016;
+  --tab: #1e232e;
+  --line: #232835;
+  --line-strong: #323949;
+  --fg: #e9ecf2;
+  --fg-2: #a3abbc;
+  --fg-3: #7d8598;
+
+  --accent: #0253f7;
+  --accent-hover: #2468ff;
+  --accent-text: #7ea6ff;
+  --accent-soft: rgb(2 83 247 / 0.16);
+
+  --success: #22c55e;
+  --success-text: #4ade80;
+  --success-soft: rgb(34 197 94 / 0.14);
+  --warn: #f59e0b;
+  --warn-text: #fbbf4a;
+  --warn-soft: rgb(245 158 11 / 0.14);
+  --danger: #ef4444;
+  --danger-text: #ff8a8a;
+  --danger-soft: rgb(239 68 68 / 0.14);
+
+  --ring: rgb(126 166 255 / 0.9);
+
+  /* In the dark shadows barely show, so elevation is mostly a lighter top edge */
+  --elev-xs: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --elev-sm: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.4);
+  --elev-md: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  --elev-lg: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 24px 48px -16px rgb(0 0 0 / 0.7);
+}
+
+.light {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --raised: #f3f4f7;
+  --sunken: #eef0f3;
+  --tab: #ffffff;
+  --line: #e1e4ea;
+  --line-strong: #cbd0da;
+  --fg: #10131a;
+  --fg-2: #4a5263;
+  --fg-3: #626a7d;
+
+  --accent: #0253f7;
+  --accent-hover: #0044d6;
+  --accent-text: #0048d9;
+  --accent-soft: rgb(2 83 247 / 0.09);
+
+  --success: #16a34a;
+  --success-text: #137a3a;
+  --success-soft: rgb(22 163 74 / 0.1);
+  --warn: #f59e0b;
+  --warn-text: #a64c07;
+  --warn-soft: rgb(245 158 11 / 0.13);
+  --danger: #dc2626;
+  --danger-text: #c81e1e;
+  --danger-soft: rgb(220 38 38 / 0.09);
+
+  --ring: rgb(2 83 247 / 0.75);
+
+  --elev-xs: 0 1px 1px rgb(16 19 26 / 0.04);
+  --elev-sm: 0 1px 2px rgb(16 19 26 / 0.06), 0 1px 1px rgb(16 19 26 / 0.04);
+  --elev-md: 0 8px 24px -10px rgb(16 19 26 / 0.18), 0 2px 4px rgb(16 19 26 / 0.04);
+  --elev-lg: 0 24px 48px -16px rgb(16 19 26 / 0.22), 0 2px 6px rgb(16 19 26 / 0.05);
+}
+
+/* ==========================================================================
+   Keyframes (transform and opacity only)
+   ========================================================================== */
+@keyframes enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
-@keyframes slide-up {
-  from { transform: translateY(16px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* Copy confirmation: a ring expands from the check mark and dissolves */
+@keyframes copy-burst {
+  from { opacity: 0.6; transform: scale(0.4); }
+  to { opacity: 0; transform: scale(1.6); }
+}
+/* Bars of a chart grow from their start edge */
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+/* The "updating" dot sends out a ring */
+@keyframes ring-out {
+  from { opacity: 0.7; transform: scale(1); }
+  to { opacity: 0; transform: scale(2.4); }
+}
+/* The QR window lights up when a config is selected: fast in, slower out */
+@keyframes flash {
+  0% { opacity: 0; transform: scale(0.97); animation-timing-function: var(--ease-out); }
+  25% { opacity: 1; transform: none; animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  100% { opacity: 0; transform: scale(1.015); }
+}
+/* The restart button breathes: only the opacity of its glow layer changes */
+@keyframes breathe {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 1; }
 }
 
-@keyframes star-drift {
-  from { transform: translateY(0); }
-  to { transform: translateY(-100vh); }
+/* ==========================================================================
+   Base
+   ========================================================================== */
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100dvh;
+    /* The app chrome (header and sidebar) is one surface; the content sits on --bg */
+    background: var(--surface);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  /* One focus ring for everything: visible, soft, follows the corner radius */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Theme switch: everything changes at once instead of each element on its own timing */
+  .theme-switching,
+  .theme-switching * {
+    transition: none !important;
+  }
+
+  /* Thin, quiet scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
 }
 
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+/* Fades the edges of a scroll area where content is hidden; data-fade-start / data-fade-end are set by
+   useScrollFade. The fade sizes are registered properties, so they transition smoothly. */
+@property --fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@utility scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+  transition: --fade-start 200ms var(--ease-out), --fade-end 200ms var(--ease-out);
+  &[data-fade-start] { --fade-start: 28px; }
+  &[data-fade-end] { --fade-end: 28px; }
 }
 
-/* === Base Styles === */
-html {
-  font-family: var(--font-sans);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Pressing feels physical: a quick, small shrink */
+@utility press {
+  transition-property: transform, background-color, border-color, color, box-shadow, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+/* The glow layer of the restart button */
+@utility breathe {
+  animation: breathe 2.4s var(--ease-in-out) infinite;
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
+@layer base {
+  /* Numbers are typed, not stepped: no spinner buttons */
+  input[type='number'] {
+    appearance: textfield;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
+  /* Range sliders */
+  input[type='range'] {
+    appearance: none;
+    background: transparent;
+    height: 44px;
+    cursor: pointer;
+  }
+  input[type='range']::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(to right, var(--accent) var(--fill, 0%), var(--raised) var(--fill, 0%));
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  input[type='range']::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--raised);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  input[type='range']::-moz-range-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+  input[type='range']::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    margin-top: -7px;
+    border-radius: 999px;
+    background: #fff;
+    border: 2px solid var(--accent);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+    transition: transform 150ms var(--ease-out);
+  }
+  input[type='range']::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: #fff;
+    border: 2px solid var(--accent);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  }
+  input[type='range']:active::-webkit-slider-thumb {
+    transform: scale(1.15);
+  }
+  input[type='range']:focus-visible {
+    outline: none;
+  }
+  input[type='range']:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  input[type='range']:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
 }
 
-/* === Dark Theme (default) === */
-.dark {
-  color-scheme: dark;
-  --color-bg-primary: #0a0a0f;
-  --color-bg-secondary: #111118;
-  --color-bg-card: #16161f;
-  --color-bg-input: #0e0e15;
-  --color-border: #23232f;
-  --color-border-hover: #33334a;
-  --color-text-primary: #f0f0f5;
-  --color-text-secondary: #8888a0;
-  --color-text-muted: #55556a;
-  --color-glass: rgba(22, 22, 31, 0.7);
-  --color-glass-border: rgba(255, 255, 255, 0.06);
-  --color-star: rgba(255, 255, 255, 0.7);
-  --color-bg-gradient-start: #0f0f1a;
-  --color-bg-gradient-end: #060608;
-}
-
-/* === Light Theme === */
-.light {
-  color-scheme: light;
-  --color-bg-primary: #f5f5f7;
-  --color-bg-secondary: #eeeef0;
-  --color-bg-card: #ffffff;
-  --color-bg-input: #f0f0f3;
-  --color-border: #d8d8e0;
-  --color-border-hover: #b0b0c0;
-  --color-text-primary: #111118;
-  --color-text-secondary: #555568;
-  --color-text-muted: #888898;
-  --color-glass: rgba(255, 255, 255, 0.75);
-  --color-glass-border: rgba(0, 0, 0, 0.08);
-  --color-star: rgba(36, 82, 207, 0.595);
-  --color-bg-gradient-start: #e8e8f0;
-  --color-bg-gradient-end: #f5f5f7;
-}
-
-/* === Star Background Layer === */
-.stars-layer {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(180deg, var(--color-bg-gradient-start) 0%, var(--color-bg-gradient-end) 100%);
-  overflow: hidden;
-}
-
-.stars-sm {
-  position: absolute;
-  width: 1px; height: 1px;
-  box-shadow:
-    10vw 10vh var(--color-star), 20vw 20vh var(--color-star), 30vw 50vh var(--color-star),
-    40vw 80vh var(--color-star), 50vw 30vh var(--color-star), 60vw 60vh var(--color-star),
-    70vw 90vh var(--color-star), 80vw 20vh var(--color-star), 90vw 40vh var(--color-star),
-    95vw 70vh var(--color-star), 15vw 80vh var(--color-star), 25vw 40vh var(--color-star),
-    35vw 15vh var(--color-star), 45vw 65vh var(--color-star), 55vw 85vh var(--color-star),
-    65vw 35vh var(--color-star), 75vw 15vh var(--color-star), 85vw 55vh var(--color-star),
-    5vw 95vh var(--color-star), 80vw 5vh var(--color-star), 10vw 90vh var(--color-star);
-  animation: var(--animate-star-drift);
-}
-
-.stars-md {
-  position: absolute;
-  width: 3px; height: 3px;
-  box-shadow:
-    15vw 10vh var(--color-star), 30vw 20vh var(--color-star), 45vw 50vh var(--color-star),
-    60vw 80vh var(--color-star), 75vw 30vh var(--color-star), 90vw 60vh var(--color-star),
-    5vw 90vh var(--color-star), 20vw 20vh var(--color-star), 35vw 40vh var(--color-star),
-    50vw 70vh var(--color-star), 65vw 80vh var(--color-star), 80vw 40vh var(--color-star),
-    95vw 15vh var(--color-star);
-  animation: var(--animate-star-drift-slow);
-}
-
-.stars-lg {
-  position: absolute;
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  box-shadow:
-    20vw 15vh var(--color-star), 40vw 25vh var(--color-star), 60vw 55vh var(--color-star),
-    80vw 85vh var(--color-star), 10vw 35vh var(--color-star), 30vw 65vh var(--color-star),
-    50vw 95vh var(--color-star), 70vw 25vh var(--color-star), 90vw 45vh var(--color-star);
-  animation: var(--animate-star-drift-slower);
-}
-
-/* === Custom Scrollbars === */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-border-hover);
-}
-
-/* === Card glass effect === */
-.glass-card {
-  background: var(--color-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-glass-border);
+/* ==========================================================================
+   Reduced motion: no movement, only short fades; nothing loops
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  .press:active:not(:disabled) {
+    transform: none;
+  }
 }

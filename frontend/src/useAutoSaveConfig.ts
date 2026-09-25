@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchConfig, fetchRestartState, saveConfig, type AppConfig, type RestartState } from './api';
+import { fetchConfig, saveConfig, type AppConfig, type RestartState } from './api';
 import { validateConfig, type ConfigErrors } from './validateConfig';
 
 /**
@@ -18,35 +18,34 @@ const EDITABLE_FIELDS: (keyof AppConfig)[] = [
 
 /** Pause after the last keystroke before the settings are sent */
 const SAVE_DELAY_MS = 600;
-const RESTART_POLL_MS = 3000;
-
-const NO_RESTART: RestartState = { required: false, fields: [] };
 
 const hasChanges = (draft: AppConfig, saved: AppConfig) =>
   EDITABLE_FIELDS.some(field => JSON.stringify(draft[field]) !== JSON.stringify(saved[field]));
 
 /**
  * Loads the settings and sends every change to the server on its own (text fields wait for a short pause in typing),
- * so there is no "Save" button. Invalid values are never sent. Also tracks which changes await a server restart.
+ * so there is no "Save" button. Invalid values are never sent.
  *
  * @param workingLevel - The working check level currently used by the server; it is changed separately
  *   (also from the tray) and has to be sent back unchanged with the rest of the settings.
+ * @param onRestart - Receives which saved changes await a server restart, after every save.
  */
-export function useAutoSaveConfig(workingLevel: number | undefined) {
+export function useAutoSaveConfig(workingLevel: number | undefined, onRestart: (restart: RestartState) => void) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [status, setStatus] = useState<SaveStatus>('saved');
   const [errorMessage, setErrorMessage] = useState('');
-  const [restart, setRestart] = useState<RestartState>(NO_RESTART);
 
   const draftRef = useRef<AppConfig | null>(null); // What the user has entered
   const savedRef = useRef<AppConfig | null>(null); // What the server has
   const levelRef = useRef(workingLevel);
+  const onRestartRef = useRef(onRestart);
   const timerRef = useRef<number | undefined>(undefined);
   const savingRef = useRef(false);
 
   useEffect(() => {
     levelRef.current = workingLevel;
-  }, [workingLevel]);
+    onRestartRef.current = onRestart;
+  }, [workingLevel, onRestart]);
 
   const flush = useCallback(async (keepalive = false) => {
     window.clearTimeout(timerRef.current);
@@ -79,7 +78,7 @@ export function useAutoSaveConfig(workingLevel: number | undefined) {
         }
 
         savedRef.current = payload;
-        setRestart(result.restart);
+        onRestartRef.current(result.restart);
         // Loop again: the user may have changed something while the request was running
       }
     } finally {
@@ -93,16 +92,6 @@ export function useAutoSaveConfig(workingLevel: number | undefined) {
       savedRef.current = data;
       setConfig(data);
     }).catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    const load = () => fetchRestartState().then(setRestart).catch(() => {
-      // The server is restarting or busy: keep what is shown
-    });
-
-    load();
-    const timer = window.setInterval(load, RESTART_POLL_MS);
-    return () => clearInterval(timer);
   }, []);
 
   // Send changes that are still waiting for the typing pause when the user leaves
@@ -141,5 +130,5 @@ export function useAutoSaveConfig(workingLevel: number | undefined) {
 
   const errors: ConfigErrors = useMemo(() => (config ? validateConfig(config) : {}), [config]);
 
-  return { config, errors, status, errorMessage, restart, update, retry };
+  return { config, errors, status, errorMessage, update, retry };
 }

@@ -1,10 +1,10 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { AnimatePresence, m } from 'motion/react';
-import { CircleArrowUp, Heart, Moon, Pause, RotateCw, Star, Sun, TriangleAlert } from 'lucide-react';
+import { CircleArrowUp, Heart, Moon, Pause, Play, RotateCw, Star, Sun, TriangleAlert } from 'lucide-react';
 import type { UpdaterState } from '../api';
 import { useTranslation } from '../i18n';
 import { useTheme } from '../ThemeContext';
-import type { Mode } from '../navigation';
+import type { Attention, Mode } from '../navigation';
 import { popVariants, spring } from '../motion/presets';
 import IconButton from '../ui/IconButton';
 import Spinner from '../ui/Spinner';
@@ -16,11 +16,54 @@ interface AppHeaderProps {
   onNavigate: (mode: Mode) => void;
   updaterState: UpdaterState | null;
   paused: boolean;
+  /** Resumes paused updates; resolves to false if it failed */
+  onResume: () => Promise<boolean>;
+  /** The dot next to Settings */
+  settingsAttention?: Attention;
   githubStars: number | null;
 }
 
 const pillClass = `press flex h-9 items-center gap-2 rounded-sm px-3 text-sm font-medium cursor-pointer
                    before:absolute before:-inset-y-1 before:inset-x-0 relative`;
+
+/**
+ * Shown while configs auto update is paused; a click resumes it (an update starts right away).
+ * The pause icon turns into a play icon on hover and focus, to say what the click does.
+ */
+function PausedPill({ onResume }: { onResume: () => Promise<boolean> }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle');
+
+  const resume = async () => {
+    setState('busy');
+    // On success the pill goes away with the pause; it only stays to show the failure
+    setState((await onResume()) ? 'idle' : 'failed');
+  };
+
+  const label = state === 'failed' ? t('pause.resumeFailed') : t('pause.badgeResume');
+
+  return (
+    <button
+      type="button"
+      onClick={resume}
+      disabled={state === 'busy'}
+      aria-label={label}
+      title={label}
+      className={`${pillClass} group bg-warn-soft text-warn-text hover:bg-warn hover:text-bg focus-visible:bg-warn focus-visible:text-bg
+                  disabled:cursor-wait ${state === 'failed' ? 'shadow-[inset_0_0_0_1px_var(--danger)]' : ''}`}
+    >
+      {state === 'busy' ? (
+        <Spinner className="size-4" />
+      ) : (
+        <span className="relative size-4">
+          <Pause className="absolute inset-0 size-4 transition-[opacity,transform] duration-150 ease-out group-hover:scale-75 group-hover:opacity-0 group-focus-visible:opacity-0" fill="currentColor" aria-hidden="true" />
+          <Play className="absolute inset-0 size-4 scale-75 opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100" fill="currentColor" aria-hidden="true" />
+        </span>
+      )}
+      <span className="hidden xl:inline">{state === 'busy' ? t('pause.resuming') : t('pause.badge')}</span>
+    </button>
+  );
+}
 
 /** App update state as a compact pill; clicking it opens the update view. */
 function UpdatePill({ state, onOpen }: { state: UpdaterState; onOpen: () => void }) {
@@ -72,7 +115,7 @@ function UpdatePill({ state, onOpen }: { state: UpdaterState; onOpen: () => void
   }
 }
 
-export default memo(function AppHeader({ mode, onNavigate, updaterState, paused, githubStars }: AppHeaderProps) {
+export default memo(function AppHeader({ mode, onNavigate, updaterState, paused, onResume, settingsAttention, githubStars }: AppHeaderProps) {
   const { t, language, setLanguage } = useTranslation();
   const { theme, toggleTheme } = useTheme();
 
@@ -91,27 +134,15 @@ export default memo(function AppHeader({ mode, onNavigate, updaterState, paused,
       </button>
 
       <div className="flex flex-1 justify-center">
-        <NavTabs mode={mode} onNavigate={onNavigate} attention={{ settings: paused }} />
+        <NavTabs mode={mode} onNavigate={onNavigate} attention={{ settings: settingsAttention }} />
       </div>
 
       <div className="flex items-center gap-1">
         <AnimatePresence initial={false}>
           {paused && (
-            <m.button
-              key="paused"
-              type="button"
-              variants={popVariants}
-              initial="hidden"
-              animate="visible"
-              exit="hidden"
-              transition={spring.snappy}
-              onClick={() => onNavigate('settings')}
-              className={`${pillClass} bg-warn-soft text-warn-text hover:bg-warn hover:text-bg`}
-              aria-label={t('pause.badge')}
-            >
-              <Pause className="size-4" fill="currentColor" aria-hidden="true" />
-              <span className="hidden xl:inline">{t('pause.badge')}</span>
-            </m.button>
+            <m.span key="paused" variants={popVariants} initial="hidden" animate="visible" exit="hidden" transition={spring.snappy} className="inline-flex">
+              <PausedPill onResume={onResume} />
+            </m.span>
           )}
           {updateVisible && updaterState && (
             <m.span key="update" variants={popVariants} initial="hidden" animate="visible" exit="hidden" transition={spring.snappy} className="inline-flex">

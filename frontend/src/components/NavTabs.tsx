@@ -1,13 +1,31 @@
 import { m } from 'motion/react';
 import { useTranslation } from '../i18n';
-import { navItems, type Mode } from '../navigation';
+import { navItems, type Attention, type Mode } from '../navigation';
 import { spring } from '../motion/presets';
 
 interface NavTabsProps {
   mode: Mode;
   onNavigate: (mode: Mode) => void;
-  /** Dots next to sections that need attention (e.g. updates are paused) */
-  attention?: Partial<Record<Mode, boolean>>;
+  /** Dots next to sections where something runs or needs the user (e.g. saving, a restart, a pause) */
+  attention?: Partial<Record<Mode, Attention>>;
+}
+
+/**
+ * The small dot of a section: lights up (pops in) when something happens there. `busy` is an accent dot that
+ * sends out rings while it lasts, `action` a still warning dot. The meaning is also told to screen readers.
+ */
+function AttentionDot({ kind, className = '' }: { kind: Attention; className?: string }) {
+  const { t } = useTranslation();
+
+  return (
+    <span key={kind} className={`relative flex size-2 animate-pop ${className}`}>
+      {kind === 'busy' && (
+        <span aria-hidden="true" className="absolute inset-0 animate-[ring-out_1.4s_var(--ease-out)_infinite] rounded-full bg-accent" />
+      )}
+      <span aria-hidden="true" className={`relative size-2 rounded-full ${kind === 'busy' ? 'bg-accent' : 'bg-warn'}`} />
+      <span className="sr-only">{t(kind === 'busy' ? 'nav.busy' : 'nav.action')}</span>
+    </span>
+  );
 }
 
 /** Top navigation on wide screens: the active pill slides between tabs (a layout animation, transform only). */
@@ -40,7 +58,7 @@ export function NavTabs({ mode, onNavigate, attention = {} }: NavTabsProps) {
                 {/* Icons join the labels once there is room for both */}
                 <Icon className="relative hidden size-4 lg:block" aria-hidden="true" />
                 <span className="relative">{t(labelKey)}</span>
-                {attention[itemMode] && <span className="relative size-1.5 rounded-full bg-warn" aria-hidden="true" />}
+                {attention[itemMode] && <AttentionDot kind={attention[itemMode]} />}
               </button>
             </li>
           );
@@ -81,7 +99,7 @@ export function BottomTabs({ mode, onNavigate, attention = {} }: NavTabsProps) {
                     />
                   )}
                   <Icon className="relative size-5" aria-hidden="true" />
-                  {attention[itemMode] && <span className="absolute right-3 top-0.5 size-1.5 rounded-full bg-warn" aria-hidden="true" />}
+                  {attention[itemMode] && <AttentionDot kind={attention[itemMode]} className="absolute! right-3 top-0.5" />}
                 </span>
                 {t(labelKey)}
               </button>

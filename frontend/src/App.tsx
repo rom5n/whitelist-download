@@ -8,10 +8,11 @@ import LogsView from './components/LogsView';
 import StatisticsView from './components/StatisticsView';
 import AppHeader from './components/AppHeader';
 import { BottomTabs } from './components/NavTabs';
-import { fetchStatistics, fetchSubscriptionLink, fetchConfigs, fetchUpdaterStatus, toCountryParam, type Statistics, type UpdaterState } from './api';
+import { fetchStatistics, fetchSubscriptionLink, fetchConfigs, fetchUpdaterStatus, resumeUpdates, toCountryParam, type Statistics, type UpdaterState } from './api';
 import { useTranslation } from './i18n';
 import { usePollingState } from './usePollingState';
-import type { Mode } from './navigation';
+import type { Attention, Mode } from './navigation';
+import { useRestartState } from './useRestartState';
 import Spinner from './ui/Spinner';
 
 // Release notes need a markdown renderer; it is loaded only when the update view is opened
@@ -99,6 +100,24 @@ export default function App() {
 
   const [updaterState, setUpdaterState] = useState<UpdaterState | null>(null);
   const { state: pollingState, setState: setPollingState } = usePollingState();
+  const { restart, setRestart } = useRestartState();
+  const [settingsActivity, setSettingsActivity] = useState<Attention | null>(null);
+
+  const paused = pollingState?.paused ?? false;
+  // The dot next to Settings: something runs there, or something there needs the user
+  const settingsAttention: Attention | undefined = settingsActivity === 'busy'
+    ? 'busy'
+    : settingsActivity === 'action' || restart.required || paused ? 'action' : undefined;
+
+  const resume = useCallback(async () => {
+    try {
+      setPollingState(await resumeUpdates());
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }, [setPollingState]);
 
   useEffect(() => {
     // Polled twice a second: keep the previous object when nothing changed, so the app doesn't re-render for nothing
@@ -330,7 +349,9 @@ export default function App() {
         mode={mode}
         onNavigate={navigate}
         updaterState={updaterState}
-        paused={pollingState?.paused ?? false}
+        paused={paused}
+        onResume={resume}
+        settingsAttention={settingsAttention}
         githubStars={githubStars}
       />
 
@@ -396,6 +417,9 @@ export default function App() {
                   totalConfigs={stats?.amount_configs ?? 0}
                   countriesError={loadError}
                   onRetryCountries={loadInitialData}
+                  restart={restart}
+                  onRestartChange={setRestart}
+                  onActivityChange={setSettingsActivity}
                 />
               )}
               {mode === 'logs' && <LogsView />}
@@ -410,7 +434,7 @@ export default function App() {
         </main>
       </div>
 
-      <BottomTabs mode={mode} onNavigate={navigate} attention={{ settings: pollingState?.paused ?? false }} />
+      <BottomTabs mode={mode} onNavigate={navigate} attention={{ settings: settingsAttention }} />
     </div>
   );
 }

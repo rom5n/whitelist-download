@@ -123,6 +123,8 @@ const translations: Record<Language, Record<string, string>> = {
     'pause.note': 'The "Update Configurations" button still works while paused.',
     'pause.error': 'Could not change the auto-update state. Try again.',
     'pause.badge': 'Updates paused',
+    'pause.badgeResume': 'Updates paused — click to resume',
+    'pause.resumeFailed': 'Could not resume updates. Try again.',
     'sub.noLimit': 'No limit',
 
     // Updates
@@ -158,6 +160,8 @@ const translations: Record<Language, Record<string, string>> = {
     'details.parseError': 'Failed to parse configuration.',
 
     'nav.main': 'Sections',
+    'nav.busy': '(in progress)',
+    'nav.action': '(needs attention)',
     'nav.subscription': 'Subscription',
     'header.language': 'Language',
     'theme.toLight': 'Light theme',
@@ -335,6 +339,8 @@ const translations: Record<Language, Record<string, string>> = {
     'pause.note': 'Кнопка «Обновить конфигурации» работает и во время паузы.',
     'pause.error': 'Не удалось изменить состояние автообновления. Попробуйте ещё раз.',
     'pause.badge': 'Обновления на паузе',
+    'pause.badgeResume': 'Обновления на паузе — нажмите, чтобы возобновить',
+    'pause.resumeFailed': 'Не удалось возобновить обновления. Попробуйте ещё раз.',
     'sub.noLimit': 'Без лимита',
 
     // Updates
@@ -370,6 +376,8 @@ const translations: Record<Language, Record<string, string>> = {
     'details.parseError': 'Не удалось распознать конфигурацию.',
 
     'nav.main': 'Разделы',
+    'nav.busy': '(выполняется)',
+    'nav.action': '(требует внимания)',
     'nav.subscription': 'Подписка',
     'header.language': 'Язык',
     'theme.toLight': 'Светлая тема',

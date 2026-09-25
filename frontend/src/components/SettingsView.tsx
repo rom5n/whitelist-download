@@ -2,7 +2,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { AnimatePresence, m } from 'motion/react';
 import { Check, ExternalLink, Heart, Plus, Power, RefreshCw, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { updateConfigs, restartServer, setCheckLevel, type AppConfig, type CheckLevel, type PollingState } from '../api';
+import { updateConfigs, restartServer, setCheckLevel, type AppConfig, type CheckLevel, type PollingState, type RestartState } from '../api';
+import type { Attention } from '../navigation';
 import { useAutoSaveConfig } from '../useAutoSaveConfig';
 import { useScrollFade } from '../useScrollFade';
 import { isValidSource } from '../validateConfig';
@@ -30,13 +31,29 @@ interface SettingsViewProps {
   totalConfigs: number;
   countriesError: boolean;
   onRetryCountries: () => void;
+  /** Saved changes that await a restart; followed by App, so the header shows it on every screen */
+  restart: RestartState;
+  onRestartChange: (restart: RestartState) => void;
+  /** Tells the header whether something runs here (saving, updating, restarting) or needs the user */
+  onActivityChange: (activity: Attention | null) => void;
 }
 
 type ActionState = 'idle' | 'busy' | 'done' | 'failed';
 
-export default function SettingsView({ version, pollingState, onPollingStateChange, countries, totalConfigs, countriesError, onRetryCountries }: SettingsViewProps) {
+export default function SettingsView({
+  version,
+  pollingState,
+  onPollingStateChange,
+  countries,
+  totalConfigs,
+  countriesError,
+  onRetryCountries,
+  restart,
+  onRestartChange,
+  onActivityChange,
+}: SettingsViewProps) {
   const { t } = useTranslation();
-  const { config, errors, status, errorMessage, restart, update, retry } = useAutoSaveConfig(pollingState?.working_check_level);
+  const { config, errors, status, errorMessage, update, retry } = useAutoSaveConfig(pollingState?.working_check_level, onRestartChange);
   const [newSource, setNewSource] = useState('');
 
   const [updateState, setUpdateState] = useState<ActionState>('idle');
@@ -46,6 +63,17 @@ export default function SettingsView({ version, pollingState, onPollingStateChan
   const sourcesRef = useScrollFade<HTMLUListElement>();
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  const activity: Attention | null = status === 'saving' || updateState === 'busy' || restartState === 'busy'
+    ? 'busy'
+    : status === 'invalid' || status === 'error' ? 'action' : null;
+
+  useEffect(() => {
+    onActivityChange(activity);
+  }, [activity, onActivityChange]);
+
+  // Leaving the settings stops nothing that would keep the dot lit
+  useEffect(() => () => onActivityChange(null), [onActivityChange]);
   const later = (fn: () => void, ms: number) => timers.current.push(window.setTimeout(fn, ms));
 
   const isNewSourceValid = useMemo(() => {

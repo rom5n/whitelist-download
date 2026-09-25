@@ -23,11 +23,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return (saved === 'dark' || saved === 'light') ? saved : 'dark';
   });
 
-  /** Applies theme class to the document root element */
+  /** Applies theme class to the document root element. Transitions are paused for a frame, so all colors switch together. */
   useEffect(() => {
     const root = document.documentElement;
+    root.classList.add('theme-switching');
     root.classList.remove('dark', 'light');
     root.classList.add(theme);
+    const frame = requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove('theme-switching')));
+    return () => cancelAnimationFrame(frame);
   }, [theme]);
 
   /** Toggles between dark and light themes */

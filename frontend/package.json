@@ -10,7 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/onest": "^5.3.1",
     "@tailwindcss/typography": "^0.5.20",
+    "@tanstack/react-virtual": "^3.14.13",
+    "country-flag-emoji-polyfill": "^0.1.10",
+    "lucide-react": "^1.48.0",
+    "motion": "^13.4.4",
     "qrcode.react": "^3.1.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

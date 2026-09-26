@@ -11,12 +11,17 @@ import (
 	"github.com/rom5n/whitelist-download/backend/logging"
 	"github.com/rom5n/whitelist-download/backend/paths"
 	box "github.com/sagernet/sing-box"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/json/badoption"
 	"go.uber.org/zap"
 
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
@@ -40,8 +45,6 @@ type UpdateResult struct {
 	NotWorking       int
 	ConfigsByCountry map[string]int
 }
-
-var portPool chan int
 
 var updatesInProgress atomic.Int32
 
@@ -97,19 +100,6 @@ func UpdateConfigs(ctx context.Context, configsCache *domain.SafeConfigsCache, s
 	return result, nil
 }
 
-// isWorking Has 2 levels of verification: 1 - ping test (fast), 2 - sing box check (50x slower, about 500ms, but a much better)
-func isWorking(config string, level int) (bool, error) {
-	if level < 2 {
-		parsedConfig, err := url.Parse(config)
-		if err != nil {
-			return false, fmt.Errorf("failed to parse config url %s: %w", config, err)
-		}
-		return pingCheck(parsedConfig.Host, pingTimeout), nil
-	}
-
-	return singBoxCheck(config, urlTimeout), nil
-}
-
 func pingCheck(link string, timeout time.Duration) bool {
 	conn, err := net.DialTimeout("tcp", link, timeout)
 	if err != nil {
@@ -124,52 +114,121 @@ func pingCheck(link string, timeout time.Duration) bool {
 	return false
 }
 
-var singBoxMutex sync.Mutex
-
-func init() {
-	portPool = make(chan int, maxWorkers)
-	for i := 0; i < maxWorkers; i++ {
-		portPool <- 20000 + i
-	}
+// singBoxChecker checks configs through one sing-box instance: every config is an outbound, and a
+// single local SOCKS inbound routes each connection to its outbound by the SOCKS username.
+// Starting an instance costs ~0.2s that Windows serializes, so an instance per config made a
+// level 2 update of ~1500 configs run past updateTimeout.
+type singBoxChecker struct {
+	instance *box.Box
+	port     int
+	users    map[string]string // config link -> SOCKS username
 }
 
-func singBoxCheck(config string, timeout time.Duration) bool {
-	localPort := <-portPool
-	defer func() { portPool <- localPort }()
-
-	opts, err := buildSingBoxOptions(config, localPort)
+func newSingBoxChecker(ctx context.Context, configs []string) (*singBoxChecker, error) {
+	port, err := freeLocalPort()
 	if err != nil {
-		logging.Log.Debug("sing-box parse error", zap.Error(err))
-		return false
+		return nil, fmt.Errorf("finding a free port: %w", err)
 	}
 
-	singBoxMutex.Lock()
-	ctx := include.Context(context.Background())
-	instance, err := box.New(box.Options{
-		Context: ctx,
-		Options: opts,
+	checker := &singBoxChecker{port: port, users: make(map[string]string, len(configs))}
+	socks := &option.SocksInboundOptions{
+		ListenOptions: option.ListenOptions{
+			Listen:     common.Ptr(badoption.Addr(netip.AddrFrom4([4]byte{127, 0, 0, 1}))),
+			ListenPort: uint16(port),
+		},
+	}
+	opts := option.Options{
+		Log:      &option.LogOptions{Disabled: true},
+		Inbounds: []option.Inbound{{Type: "socks", Tag: "in-socks", Options: socks}},
+		// Dial through the physical interface: with another VPN client's TUN up (Happ, v2rayN,
+		// Hiddify...) the check would otherwise test the path through that VPN, not this network.
+		Route: &option.RouteOptions{AutoDetectInterface: true},
+	}
+
+	for _, config := range configs {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if _, ok := checker.users[config]; ok {
+			continue
+		}
+
+		tag := "proxy-" + strconv.Itoa(len(opts.Outbounds))
+		outbound, err := buildVLESSOutbound(config, tag)
+		if err != nil {
+			logging.Log.Debug("sing-box parse error", zap.Error(err))
+			continue
+		}
+		// One broken config must not fail the shared instance, so each one is validated on its
+		// own first (box.New without Start is cheap).
+		if err = validateOutbound(outbound); err != nil {
+			logging.Log.Debug("sing-box core instance error", zap.Error(err))
+			continue
+		}
+
+		user := "c" + strconv.Itoa(len(opts.Outbounds))
+		checker.users[config] = user
+		socks.Users = append(socks.Users, auth.User{Username: user, Password: user})
+		opts.Outbounds = append(opts.Outbounds, outbound)
+		opts.Route.Rules = append(opts.Route.Rules, option.Rule{
+			Type: C.RuleTypeDefault,
+			DefaultOptions: option.DefaultRule{
+				RawDefaultRule: option.RawDefaultRule{AuthUser: []string{user}},
+				RuleAction: option.RuleAction{
+					Action:       C.RuleActionTypeRoute,
+					RouteOptions: option.RouteActionOptions{Outbound: tag},
+				},
+			},
+		})
+	}
+
+	if len(opts.Outbounds) == 0 {
+		return checker, nil
+	}
+
+	// A connection that matched no user must not fall through to the first outbound.
+	opts.Route.Rules = append(opts.Route.Rules, option.Rule{
+		Type: C.RuleTypeDefault,
+		DefaultOptions: option.DefaultRule{
+			RawDefaultRule: option.RawDefaultRule{Inbound: []string{"in-socks"}},
+			RuleAction:     option.RuleAction{Action: C.RuleActionTypeReject},
+		},
 	})
-	singBoxMutex.Unlock()
 
+	instance, err := box.New(box.Options{Context: include.Context(context.Background()), Options: opts})
 	if err != nil {
-		logging.Log.Debug("sing-box core instance error", zap.Error(err))
+		return nil, fmt.Errorf("creating sing-box instance: %w", err)
+	}
+	if err = instance.Start(); err != nil {
+		if closeErr := instance.Close(); closeErr != nil {
+			logging.Log.Warn("failed to close sing-box instance", zap.Error(closeErr))
+		}
+		return nil, fmt.Errorf("starting sing-box instance: %w", err)
+	}
+	checker.instance = instance
+
+	return checker, nil
+}
+
+// check reports whether a request through the config's outbound gets a response.
+func (c *singBoxChecker) check(ctx context.Context, config string) bool {
+	user, ok := c.users[config]
+	if !ok || c.instance == nil {
 		return false
 	}
 
-	if err := instance.Start(); err != nil {
-		logging.Log.Debug("sing-box start error", zap.Error(err))
-		return false
-	}
-	defer instance.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, urlTimeout)
 	defer cancel()
 
-	proxyUrl, _ := url.Parse(fmt.Sprintf("socks5://127.0.0.1:%d", localPort))
+	proxyURL := &url.URL{
+		Scheme: "socks5",
+		User:   url.UserPassword(user, user),
+		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(c.port)),
+	}
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout: urlTimeout,
 		Transport: &http.Transport{
-			Proxy:             http.ProxyURL(proxyUrl),
+			Proxy:             http.ProxyURL(proxyURL),
 			DisableKeepAlives: true,
 		},
 	}
@@ -188,10 +247,48 @@ func singBoxCheck(config string, timeout time.Duration) bool {
 	return resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK
 }
 
-func buildSingBoxOptions(link string, localPort int) (option.Options, error) {
+func (c *singBoxChecker) Close() {
+	if c.instance == nil {
+		return
+	}
+	if err := c.instance.Close(); err != nil {
+		logging.Log.Warn("failed to close sing-box instance", zap.Error(err))
+	}
+}
+
+func validateOutbound(outbound option.Outbound) error {
+	instance, err := box.New(box.Options{
+		Context: include.Context(context.Background()),
+		Options: option.Options{
+			Log:       &option.LogOptions{Disabled: true},
+			Outbounds: []option.Outbound{outbound},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if err = instance.Close(); err != nil {
+		return fmt.Errorf("closing validation instance: %w", err)
+	}
+	return nil
+}
+
+func freeLocalPort() (int, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err = listener.Close(); err != nil {
+		return 0, err
+	}
+	return port, nil
+}
+
+func buildVLESSOutbound(link string, tag string) (option.Outbound, error) {
 	u, err := url.Parse(link)
 	if err != nil || u.Scheme != "vless" {
-		return option.Options{}, errors.New("invalid or unsupported link format (only vless is supported)")
+		return option.Outbound{}, errors.New("invalid or unsupported link format (only vless is supported)")
 	}
 
 	port, err := strconv.Atoi(u.Port())
@@ -246,26 +343,7 @@ func buildSingBoxOptions(link string, localPort int) (option.Options, error) {
 		}
 	}
 
-	return option.Options{
-		Inbounds: []option.Inbound{
-			{
-				Type: "socks",
-				Tag:  "in-socks",
-				Options: &option.SocksInboundOptions{
-					ListenOptions: option.ListenOptions{
-						ListenPort: uint16(localPort),
-					},
-				},
-			},
-		},
-		Outbounds: []option.Outbound{
-			{
-				Type:    "vless",
-				Tag:     "proxy",
-				Options: &vless,
-			},
-		},
-	}, nil
+	return option.Outbound{Type: "vless", Tag: tag, Options: &vless}, nil
 }
 
 // singBoxFingerprints are the uTLS fingerprints sing-box accepts (common/tls/utls_client.go).
@@ -367,6 +445,25 @@ func fetchConfigs(ctx context.Context, client *http.Client, source string) ([]st
 
 // filterWorkingConfigs returns only working configs
 func filterWorkingConfigs(ctx context.Context, uniqueConfigs []string, level int) ([]string, error) {
+	// Level 1: TCP dial (fast). Level 2: a real request through sing-box (slower, much more accurate).
+	check := func(ctx context.Context, config string) (bool, error) {
+		parsedConfig, err := url.Parse(config)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse config url %s: %w", config, err)
+		}
+		return pingCheck(parsedConfig.Host, pingTimeout), nil
+	}
+	if level >= 2 {
+		checker, err := newSingBoxChecker(ctx, uniqueConfigs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start sing-box checker: %w", err)
+		}
+		defer checker.Close()
+		check = func(ctx context.Context, config string) (bool, error) {
+			return checker.check(ctx, config), nil
+		}
+	}
+
 	workingConfigs := make([]string, 0, len(uniqueConfigs))
 	workersCh := make(chan struct{}, maxWorkers)
 
@@ -390,7 +487,7 @@ func filterWorkingConfigs(ctx context.Context, uniqueConfigs []string, level int
 				<-workersCh
 			}()
 
-			working, err := isWorking(config, level)
+			working, err := check(ctx, config)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -404,6 +501,10 @@ func filterWorkingConfigs(ctx context.Context, uniqueConfigs []string, level int
 	}
 
 	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("checking interrupted: %w", err)
+	}
 
 	if allErrors != nil && successCount < len(uniqueConfigs)/100*10 {
 		return nil, fmt.Errorf("too many errors while checking configs for availability: %w", allErrors)
@@ -461,6 +562,10 @@ func formatConfigs(ctx context.Context, workingConfigs []string, locator *geo_ip
 	}
 
 	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		return nil, nil, fmt.Errorf("formatting interrupted: %w", err)
+	}
 
 	if allErrors != nil && successCount < len(workingConfigs)/100*10 {
 		return nil, nil, fmt.Errorf("too many errors while formatting configs: %w", allErrors)

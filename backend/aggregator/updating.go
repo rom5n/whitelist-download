@@ -212,28 +212,21 @@ func buildSingBoxOptions(link string, localPort int) (option.Options, error) {
 		Flow: q.Get("flow"),
 	}
 
-	if security == "reality" {
+	if security == "reality" || security == "tls" {
 		vless.TLS = &option.OutboundTLSOptions{
 			Enabled:    true,
 			ServerName: q.Get("sni"),
-			Reality: &option.OutboundRealityOptions{
+			UTLS: &option.OutboundUTLSOptions{
+				Enabled:     true,
+				Fingerprint: uTLSFingerprint(q.Get("fp")),
+			},
+		}
+		if security == "reality" {
+			vless.TLS.Reality = &option.OutboundRealityOptions{
 				Enabled:   true,
 				PublicKey: q.Get("pbk"),
 				ShortID:   q.Get("sid"),
-			},
-			UTLS: &option.OutboundUTLSOptions{
-				Enabled:     true,
-				Fingerprint: q.Get("fp"),
-			},
-		}
-	} else if security == "tls" {
-		vless.TLS = &option.OutboundTLSOptions{
-			Enabled:    true,
-			ServerName: q.Get("sni"),
-			UTLS: &option.OutboundUTLSOptions{
-				Enabled:     true,
-				Fingerprint: q.Get("fp"),
-			},
+			}
 		}
 	}
 
@@ -273,6 +266,24 @@ func buildSingBoxOptions(link string, localPort int) (option.Options, error) {
 			},
 		},
 	}, nil
+}
+
+// singBoxFingerprints are the uTLS fingerprints sing-box accepts (common/tls/utls_client.go).
+var singBoxFingerprints = map[string]struct{}{
+	"chrome": {}, "chrome_psk": {}, "chrome_psk_shuffle": {}, "chrome_padding_psk_shuffle": {},
+	"chrome_pq": {}, "chrome_pq_psk": {}, "firefox": {}, "edge": {}, "safari": {}, "360": {},
+	"qq": {}, "ios": {}, "android": {}, "random": {}, "randomized": {},
+}
+
+// uTLSFingerprint maps the link's "fp" to a fingerprint sing-box knows. Links are written for
+// other clients (Xray accepts "unsafe", "randomizednoalpn", ...), and sing-box refuses to start
+// on an unknown one, which would mark a working config as dead; those fall back to chrome.
+func uTLSFingerprint(fp string) string {
+	fp = strings.ToLower(strings.TrimSpace(fp))
+	if _, ok := singBoxFingerprints[fp]; ok {
+		return fp
+	}
+	return "chrome"
 }
 
 // getConfigs fetching and returning configs from set sources, filtering copies

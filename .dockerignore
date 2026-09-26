@@ -2,7 +2,7 @@
 **/dist
 .git
 .idea
-.agents
+.claude
 **/*.exe
 data/
 images/
